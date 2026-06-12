@@ -7,6 +7,12 @@ export 'package:yuugao/CloudMusic/generated/json/qr_check_entity.g.dart';
 class QrCheckEntity {
   int? code = 0;
   String? message = '';
+  /// 授权成功时服务器在 JSON body 中直接下发 cookie 串
+  String? cookie;
+  /// 已扫码时返回的昵称
+  String? nickname;
+  /// 已扫码时返回的头像
+  String? avatarUrl;
 
   QrCheckEntity();
 

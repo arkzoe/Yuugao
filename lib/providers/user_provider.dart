@@ -1,8 +1,10 @@
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/login_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_info_entity.dart';
+import 'package:yuugao/CloudMusic/common/cookie_holder.dart';
 import 'package:yuugao/CloudMusic/common/music_interceptors.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
@@ -128,10 +130,34 @@ class UserNotifier extends StateNotifier<UserState> {
     final res = await _api.checkQrCode(key: key);
     final code = res?.code ?? 0;
     if (code == 803) {
+      // 服务器把登录 cookie 放在 JSON body 而非 Set-Cookie 头，
+      // 需手动解析并写入 CookieJar，否则后续 userInfo 等接口无鉴权。
+      await _saveQrCookies(res?.cookie);
       state = state.copyWith(status: AuthStatus.authenticated, error: null);
       await _refreshUserInfo();
     }
     return code;
+  }
+
+  /// 解析 QR 授权返回的 cookie 串并保存到全局 CookieJar。
+  Future<void> _saveQrCookies(String? cookieStr) async {
+    if (cookieStr == null || cookieStr.trim().isEmpty) return;
+    final jar = globalCookieJar;
+    if (jar == null) return;
+    final uri = Uri.parse(defaultUrl);
+    final cookies = <Cookie>[];
+    for (final part in cookieStr.split(';')) {
+      final eq = part.indexOf('=');
+      if (eq <= 0) continue;
+      final name = part.substring(0, eq).trim();
+      final value = part.substring(eq + 1).trim();
+      if (name.isNotEmpty && value.isNotEmpty) {
+        cookies.add(Cookie(name, value));
+      }
+    }
+    if (cookies.isNotEmpty) {
+      await jar.saveFromResponse(uri, cookies);
+    }
   }
 
   Future<void> logout() async {

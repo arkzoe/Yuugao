@@ -1,8 +1,8 @@
 import 'package:yuugao/CloudMusic/api/user/entity/bool_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/like_list_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/login_entity.dart';
+import 'package:yuugao/CloudMusic/api/user/entity/qr_check_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/qrcode_key_entity.dart';
-import 'package:yuugao/CloudMusic/api/user/entity/string_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_info_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_playlist_entity.dart';
 
@@ -99,12 +99,14 @@ mixin UserApi {
     return '$defaultUrl/login?codekey=$key';
   }
 
-  /// 检测二维码
+  /// 检测二维码状态
   ///
-  /// [type] 类型（可选，默认 3）
-  Future<StringEntity?> checkQrCode({required String key, int type = 1}) async {
+  /// 返回 [QrCheckEntity]，code 含义：
+  /// 800 过期 / 801 等待扫码 / 802 已扫待确认 / 803 授权成功。
+  /// 803 时 [QrCheckEntity.cookie] 包含登录凭据串。
+  Future<QrCheckEntity?> checkQrCode({required String key, int type = 1}) async {
     final data = {'key': key, 'type': type, 'timestamp': '${DateTime.now()}'};
-    return await BujuanMusicManager().post<StringEntity>(
+    return await BujuanMusicManager().post<QrCheckEntity>(
       url: Api.checkQrCode,
       options: createOption(encryptType: EncryptType.weApi),
       data: data,
