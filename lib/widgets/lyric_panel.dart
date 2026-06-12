@@ -88,8 +88,8 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
         break;
       }
     }
-    if (idx != _activeIndex) {
-      _activeIndex = idx;
+    if (idx != _activeIndex && mounted) {
+      setState(() => _activeIndex = idx);
       if (_scroll.hasClients) {
         final target =
             (idx * _lineHeight) - (_scroll.position.viewportDimension / 2);

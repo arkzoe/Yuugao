@@ -7,7 +7,7 @@ import 'package:yuugao/pages/daily_songs_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/theme.dart';
 
-/// 首页四个功能入口：每日 / FM / 博客 / 云盘。
+/// 首页四个功能入口：每日 / FM / 播客 / 云盘。
 class HomeActionButtons extends ConsumerWidget {
   const HomeActionButtons({super.key});
 
@@ -15,7 +15,7 @@ class HomeActionButtons extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final items = [
       (
-        _Action(Icons.wb_sunny, '每日推荐', AppColors.primary),
+        _Action(Icons.calendar_month, '每日推荐', AppColors.primary),
         () {
           Navigator.of(
             context,
@@ -27,8 +27,8 @@ class HomeActionButtons extends ConsumerWidget {
         () => _startFm(context, ref),
       ),
       (
-        _Action(Icons.article, '博客', Colors.lightBlue),
-        () => _todo(context, '博客'),
+        _Action(Icons.sensors, '播客', Colors.lightBlue),
+        () => _todo(context, '播客'),
       ),
       (
         _Action(Icons.cloud, '云盘', Colors.tealAccent),
@@ -69,8 +69,7 @@ class HomeActionButtons extends ConsumerWidget {
         .where((s) => s.id > 0)
         .toList();
     if (songs.isEmpty) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('FM 暂无可用歌曲')));
+      messenger.showSnackBar(const SnackBar(content: Text('FM 暂无可用歌曲')));
       return;
     }
     await ref.read(playerProvider.notifier).play(songs.first, queue: songs);

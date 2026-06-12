@@ -4,10 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/theme.dart';
 
-/// 当前播放队列：高亮当前项，点击切歌。
-///
-/// 注：just_audio 队列重排需同步底层 audio source，第一版仅支持点击播放，
-/// 拖动排序留作后续迭代（避免与 shuffle 模式下的索引错乱）。
+/// 当前播放队列：高亮当前项，点击切歌，右侧删除按钮。
 class PlaylistPanel extends ConsumerWidget {
   const PlaylistPanel({super.key});
 
@@ -16,7 +13,8 @@ class PlaylistPanel extends ConsumerWidget {
     final state = ref.watch(playerProvider);
     if (state.queue.isEmpty) {
       return const Center(
-        child: Text('队列为空', style: TextStyle(color: AppColors.textSecondary)),
+        child:
+            Text('队列为空', style: TextStyle(color: AppColors.textSecondary)),
       );
     }
 
@@ -63,6 +61,12 @@ class PlaylistPanel extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 11, color: AppColors.textSecondary),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textSecondary),
+                  onPressed: () =>
+                      ref.read(playerProvider.notifier).removeAt(i),
                 ),
                 onTap: () => ref.read(playerProvider.notifier).playAt(i),
               );
