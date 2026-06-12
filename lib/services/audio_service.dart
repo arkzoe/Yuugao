@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
@@ -15,59 +17,151 @@ class AudioService {
 
   final AudioPlayer player = AudioPlayer();
 
-  /// 当前队列（与播放器 audio source 顺序一致）
+  /// 当前可播队列（与播放器音频源一一对应，不含无版权/付费不可播的歌曲）
   List<Song> _queue = [];
   List<Song> get queue => List.unmodifiable(_queue);
 
-  /// 已解析的播放直链，songId -> url。仅用于对"当前播放"这一首做后台缓存，
-  /// 避免对整个队列发起下载导致磁盘暴涨。
+  /// 在 setQueue / playAt 跃迁期间抑制 currentIndexStream 流向 UI，
+  /// 避免 just_audio 中间态（index=0 等）导致的"闪烁第一首信息"。
+  bool indexSuppressed = false;
+
+  /// 队列变动通知流，用于 UI 同步（两阶段加载时队列会逐步扩展）。
+  final _queueController = StreamController<List<Song>>.broadcast();
+  Stream<List<Song>> get queueStream => _queueController.stream;
+
   final Map<int, String> _resolvedUrls = {};
   final Map<int, String> _resolvedExt = {};
 
-  // exhigh(约 320kbps) 体积约为 lossless flac 的 1/4，默认走它即可。
+  int _generation = 0;
+
   String _level = 'exhigh';
   set level(String v) => _level = v;
 
-  // 暴露给 provider 的流
   Stream<Duration> get positionStream => player.positionStream;
   Stream<Duration?> get durationStream => player.durationStream;
   Stream<PlayerState> get playerStateStream => player.playerStateStream;
   Stream<int?> get currentIndexStream => player.currentIndexStream;
 
-  /// 只缓存"正在播放"的那一首，而不是整个队列。
+  /// 当前歌曲播放时后台下载本曲，同时预下载下一首。
   void _bindCaching() {
     player.currentIndexStream.listen((idx) {
       if (idx == null || idx < 0 || idx >= _queue.length) return;
       final song = _queue[idx];
       final url = _resolvedUrls[song.id];
-      if (url == null || url.isEmpty) return;
-      CacheService.instance
-          .download(url, song.id, ext: _resolvedExt[song.id] ?? 'mp3');
+      if (url != null && url.isNotEmpty) {
+        CacheService.instance
+            .download(url, song.id, ext: _resolvedExt[song.id] ?? 'mp3');
+      }
+      // 预缓存下一首（顺序播放时切歌零延迟）
+      final nextIdx = idx + 1;
+      if (nextIdx < _queue.length) {
+        final nextSong = _queue[nextIdx];
+        final nextUrl = _resolvedUrls[nextSong.id];
+        if (nextUrl != null && nextUrl.isNotEmpty) {
+          CacheService.instance.download(
+            nextUrl,
+            nextSong.id,
+            ext: _resolvedExt[nextSong.id] ?? 'mp3',
+          );
+        }
+      }
     });
   }
 
   /// 用队列替换并从 [initialIndex] 开始播放。
-  Future<void> setQueue(List<Song> songs, {int initialIndex = 0}) async {
-    _queue = List.of(songs);
+  ///
+  /// 单次 setAudioSources 原子操作：避免两阶段模式在 x86_64 模拟器上
+  /// 频繁 insertAudioSource/addAudioSource 触发平台通道 buffer 损坏。
+  /// URL 解析通过 priorityIndex 优先处理目标歌曲所在 chunk。
+  Future<void> setQueue(List<Song> candidates, {int initialIndex = 0}) async {
+    final gen = ++_generation;
+
     _resolvedUrls.clear();
     _resolvedExt.clear();
+    if (candidates.isEmpty) return;
+
+    final startIdx = initialIndex.clamp(0, candidates.length - 1);
+    final target = candidates[startIdx];
+
+    // 批量解析所有直链，目标歌曲所在 chunk 排最前
+    await _batchResolve(candidates, priorityIndex: startIdx);
+    if (gen != _generation) return;
+
+    // 构建可播列表：_queue 与 sources 一一对应
     final sources = <AudioSource>[];
-    for (final s in _queue) {
-      final src = await _buildSource(s);
-      if (src != null) sources.add(src);
+    _queue = [];
+    for (final s in candidates) {
+      final src = _buildSource(s);
+      if (src != null) {
+        sources.add(src);
+        _queue.add(s);
+      }
     }
     if (sources.isEmpty) return;
+
+    var curIdx = _queue.indexWhere((s) => s.id == target.id);
+    if (curIdx < 0) curIdx = 0;
+
+    indexSuppressed = true;
     await player.setAudioSources(
       sources,
-      initialIndex: initialIndex.clamp(0, sources.length - 1),
+      initialIndex: curIdx,
       initialPosition: Duration.zero,
     );
+    indexSuppressed = false;
+    if (gen != _generation) return;
     player.play();
+
+    _queueController.add(List.unmodifiable(_queue));
   }
 
-  /// 构建单个音频源：命中缓存用本地文件，否则取流式 url。
-  /// 注意：这里**不**触发下载，缓存只针对当前播放曲目（见 [_bindCaching]）。
-  Future<AudioSource?> _buildSource(Song song) async {
+  /// 批量解析直链，[priorityIndex] 所在 chunk 优先处理以缩短起播延迟。
+  Future<void> _batchResolve(List<Song> songs, {int priorityIndex = 0}) async {
+    const chunkSize = 100;
+    final n = songs.length;
+    if (n == 0) return;
+
+    // 计算各 chunk 的起止位置，把 priorityIndex 所在 chunk 移到最前面
+    final chunks = <({int start, int end})>[];
+    for (var i = 0; i < n; i += chunkSize) {
+      chunks.add((start: i, end: i + chunkSize < n ? i + chunkSize : n));
+    }
+    // 找到优先 chunk
+    var prio = 0;
+    for (var c = 0; c < chunks.length; c++) {
+      if (priorityIndex >= chunks[c].start &&
+          priorityIndex < chunks[c].end) {
+        prio = c;
+        break;
+      }
+    }
+    if (prio != 0) {
+      final tmp = chunks[prio];
+      chunks.removeAt(prio);
+      chunks.insert(0, tmp);
+    }
+
+    for (final ch in chunks) {
+      final ids = <String>[];
+      for (var i = ch.start; i < ch.end; i++) {
+        ids.add(songs[i].id.toString());
+      }
+      final res = await BujuanMusicManager().songUrl(
+        ids: ids,
+        level: _level,
+      );
+      final data = res?.data ?? [];
+      for (final d in data) {
+        if (d.id != null && d.url != null && d.url!.isNotEmpty) {
+          final type = (d.type ?? 'mp3').toLowerCase();
+          _resolvedUrls[d.id!] = d.url!;
+          _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
+        }
+      }
+    }
+  }
+
+  AudioSource? _buildSource(Song song) {
     final tag = MediaItem(
       id: song.id.toString(),
       title: song.name,
@@ -82,27 +176,16 @@ class AudioService {
       return AudioSource.file(localPath, tag: tag);
     }
 
-    // songUrl 接口收 List<String>
-    final res = await BujuanMusicManager().songUrl(
-      ids: [song.id.toString()],
-      level: _level,
-    );
-    final data = (res?.data ?? []);
-    if (data.isEmpty) return null;
-    final url = data.first.url ?? '';
-    if (url.isEmpty) return null; // 无版权 / 付费不可播
-
-    // 记录直链，留待"当前播放"时再缓存这一首。
-    final type = (data.first.type ?? 'mp3').toLowerCase();
-    _resolvedUrls[song.id] = url;
-    _resolvedExt[song.id] = type.isEmpty ? 'mp3' : type;
-
+    final url = _resolvedUrls[song.id];
+    if (url == null || url.isEmpty) return null;
     return AudioSource.uri(Uri.parse(url), tag: tag);
   }
 
   Future<void> playAt(int index) async {
     if (index < 0 || index >= _queue.length) return;
+    indexSuppressed = true;
     await player.seek(Duration.zero, index: index);
+    indexSuppressed = false;
     player.play();
   }
 
@@ -114,8 +197,18 @@ class AudioService {
     }
   }
 
-  Future<void> next() => player.seekToNext();
-  Future<void> previous() => player.seekToPrevious();
+  Future<void> next() async {
+    indexSuppressed = true;
+    await player.seekToNext();
+    indexSuppressed = false;
+  }
+
+  Future<void> previous() async {
+    indexSuppressed = true;
+    await player.seekToPrevious();
+    indexSuppressed = false;
+  }
+
   Future<void> seek(Duration pos) => player.seek(pos);
 
   Future<void> setLoopMode(LoopMode mode) => player.setLoopMode(mode);
@@ -124,16 +217,45 @@ class AudioService {
     await player.setShuffleModeEnabled(enabled);
   }
 
-  /// 在当前队列末尾追加并立即跳转（用于 FM "下一首"）。
-  Future<void> appendAndPlay(Song song) async {
-    final src = await _buildSource(song);
+  Future<void> removeAt(int index) async {
+    if (index < 0 || index >= _queue.length) return;
+    _queue.removeAt(index);
+    await player.removeAudioSourceAt(index);
+    _queueController.add(List.unmodifiable(_queue));
+  }
+
+  Future<void> insertNext(Song song) async {
+    if (_resolvedUrls[song.id] == null) {
+      await _batchResolve([song]);
+    }
+    final src = _buildSource(song);
     if (src == null) return;
-    _queue.add(song);
-    await player.addAudioSource(src);
+
+    final curIdx = player.currentIndex ?? 0;
+    final insertAt = curIdx + 1;
+    _queue.insert(insertAt, song);
+    await player.insertAudioSource(insertAt, src);
+    _queueController.add(List.unmodifiable(_queue));
+  }
+
+  Future<void> appendAndPlay(Song song) async {
+    final src = _buildSource(song);
+    if (src == null) {
+      await _batchResolve([song]);
+      final retry = _buildSource(song);
+      if (retry == null) return;
+      _queue.add(song);
+      await player.addAudioSource(retry);
+    } else {
+      _queue.add(song);
+      await player.addAudioSource(src);
+    }
     await playAt(_queue.length - 1);
+    _queueController.add(List.unmodifiable(_queue));
   }
 
   void dispose() {
+    _queueController.close();
     player.dispose();
   }
 }

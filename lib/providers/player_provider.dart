@@ -66,6 +66,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   final _audio = AudioService.instance;
 
+  /// 预期目标 index：切歌操作前设置，匹配后才接受 currentIndexStream 事件，
+  /// 防止 just_audio 跃迁期间发射的中间态（0、null、旧 index）覆盖 UI。
+  int? _intendedIndex;
+
   void _bind() {
     _audio.positionStream.listen((pos) {
       state = state.copyWith(position: pos);
@@ -74,14 +78,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       state = state.copyWith(duration: dur ?? Duration.zero);
     });
     _audio.currentIndexStream.listen((idx) {
-      if (idx != null) state = state.copyWith(currentIndex: idx);
+      if (idx == null || _audio.indexSuppressed) return;
+      // 有预期的 index 时只接受匹配值，拒绝跃迁过期事件
+      if (_intendedIndex != null && idx != _intendedIndex) return;
+      _intendedIndex = null; // 匹配成功，后续事件正常接受
+      state = state.copyWith(currentIndex: idx);
     });
     _audio.playerStateStream.listen((ps) {
+      // 切歌时 seek / setAudioSources 内部会短暂发射 playing=false，
+      // 抑制该窗口期避免底边栏播放/暂停图标闪烁。
+      if (_audio.indexSuppressed) return;
       state = state.copyWith(
         isPlaying: ps.playing,
         buffering: ps.processingState == ProcessingState.loading ||
             ps.processingState == ProcessingState.buffering,
       );
+    });
+    // 两阶段加载时队列会逐步扩展，同步到 UI
+    _audio.queueStream.listen((q) {
+      if (state.queue.length != q.length) {
+        // 队列变化时也修正可能越界的 currentIndex
+        final cur = _audio.player.currentIndex;
+        final idx = (cur != null && cur >= 0 && cur < q.length)
+            ? cur
+            : state.currentIndex.clamp(0, q.length - 1);
+        state = state.copyWith(queue: q, currentIndex: idx);
+      }
     });
   }
 
@@ -90,18 +112,61 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
+    _intendedIndex = index;
     state = state.copyWith(queue: list, currentIndex: index);
     await _audio.setQueue(list, initialIndex: index);
+    _intendedIndex = null; // setQueue 完成，后续 currentIndexStream 正常接受
+    final q = _audio.queue;
+    final cur = _audio.player.currentIndex;
+    state = state.copyWith(
+      queue: q,
+      currentIndex: (cur != null && cur >= 0 && cur < q.length) ? cur : state.currentIndex,
+    );
   }
 
   Future<void> toggle() => _audio.toggle();
-  Future<void> next() => _audio.next();
-  Future<void> prev() => _audio.previous();
+
+  Future<void> next() {
+    final nxt = state.currentIndex + 1;
+    if (nxt < state.queue.length) {
+      state = state.copyWith(currentIndex: nxt);
+    }
+    return _audio.next();
+  }
+
+  Future<void> prev() {
+    final prv = state.currentIndex - 1;
+    if (prv >= 0) {
+      state = state.copyWith(currentIndex: prv);
+    }
+    return _audio.previous();
+  }
+
   Future<void> seek(Duration pos) => _audio.seek(pos);
-  Future<void> playAt(int index) => _audio.playAt(index);
+
+  Future<void> playAt(int index) {
+    final q = _audio.queue;
+    if (index >= 0 && index < q.length) {
+      _intendedIndex = index;
+      state = state.copyWith(currentIndex: index, queue: q);
+    }
+    return _audio.playAt(index);
+  }
 
   Future<void> appendAndPlay(Song song) async {
     await _audio.appendAndPlay(song);
+    state = state.copyWith(queue: _audio.queue);
+  }
+
+  /// 在当前歌曲之后插入一首（下一首播放）
+  Future<void> insertNext(Song song) async {
+    await _audio.insertNext(song);
+    state = state.copyWith(queue: _audio.queue);
+  }
+
+  /// 从队列中移除指定位置的歌曲
+  Future<void> removeAt(int index) async {
+    await _audio.removeAt(index);
     state = state.copyWith(queue: _audio.queue);
   }
 
