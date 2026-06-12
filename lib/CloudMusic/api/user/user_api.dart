@@ -149,8 +149,14 @@ mixin UserApi {
   /// 用户喜欢的歌曲列表
   ///
   /// [uid] 用户id（必填）
-  Future<LikeListEntity?> userLikeList({required String uid}) async {
-    final data = {'uid': uid};
+  /// [limit] 单次返回上限，默认 2000
+  /// [offset] 分页游标，传入上一批的 [LikeListEntity.checkPoint] 继续拉取
+  Future<LikeListEntity?> userLikeList({
+    required String uid,
+    int limit = 2000,
+    int? offset,
+  }) async {
+    final data = {'uid': uid, 'limit': limit, if (offset != null) 'offset': offset};
     return await BujuanMusicManager().post<LikeListEntity>(
       url: Api.userLikeList,
       options: createOption(),

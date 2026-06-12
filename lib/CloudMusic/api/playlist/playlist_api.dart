@@ -59,16 +59,22 @@ mixin PlaylistApi {
   /// 歌单详情
   ///
   /// [id] 歌单id（必选）
-  /// [n] 暂时不知道啥意思（可选）
-  /// [s] 暂时不知道啥意思（可选）
-  /// [dynamic] 是否动态（可选）
+  /// [n] 单次返回歌曲数（必选，默认 1000）
+  /// [s] 歌曲排序方式（默认 8）
+  /// [offset] 分页偏移量，从第几首开始拉取
   Future<PlaylistDetailEntity?> playlistDetail({
     required int id,
     int n = 1000,
     int s = 8,
+    int? offset,
     bool dynamic = false,
   }) async {
-    final data = {'id': id, 'n': n, 's': s};
+    final data = {
+      'id': id,
+      'n': n,
+      's': s,
+      if (offset != null) 'offset': offset,
+    };
     return await BujuanMusicManager().post<PlaylistDetailEntity>(
       url: dynamic ? Api.playlistDetailDynamic : Api.playlistDetail,
       data: data,

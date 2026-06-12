@@ -72,8 +72,21 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
   Future<void> _fetchLikedSongs(int uid) async {
     try {
-      final res = await _api.userLikeList(uid: uid.toString());
-      state = state.copyWith(likedSongIds: (res?.ids ?? []).toSet());
+      final ids = <int>[];
+      int? cursor; // checkPoint 作为分页游标
+      var safety = 0;
+      while (safety < 20) {
+        safety++;
+        final res = await _api.userLikeList(
+          uid: uid.toString(),
+          offset: cursor,
+        );
+        if (res?.ids != null) ids.addAll(res!.ids!);
+        final cp = res?.checkPoint ?? 0;
+        if (cp <= 0 || cp == cursor) break; // 无更多数据或游标未推进
+        cursor = cp;
+      }
+      state = state.copyWith(likedSongIds: ids.toSet());
     } catch (_) {}
   }
 
