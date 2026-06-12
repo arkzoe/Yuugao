@@ -59,9 +59,11 @@ class PlayerState {
   }
 }
 
-class PlayerNotifier extends StateNotifier<PlayerState> {
-  PlayerNotifier() : super(const PlayerState()) {
+class PlayerNotifier extends Notifier<PlayerState> {
+  @override
+  PlayerState build() {
     _bind();
+    return const PlayerState();
   }
 
   final _audio = AudioService.instance;
@@ -196,6 +198,4 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 }
 
 final playerProvider =
-    StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
-  return PlayerNotifier();
-});
+    NotifierProvider<PlayerNotifier, PlayerState>(PlayerNotifier.new);

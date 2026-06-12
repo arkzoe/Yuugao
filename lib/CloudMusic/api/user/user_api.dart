@@ -104,7 +104,10 @@ mixin UserApi {
   /// 返回 [QrCheckEntity]，code 含义：
   /// 800 过期 / 801 等待扫码 / 802 已扫待确认 / 803 授权成功。
   /// 803 时 [QrCheckEntity.cookie] 包含登录凭据串。
-  Future<QrCheckEntity?> checkQrCode({required String key, int type = 1}) async {
+  Future<QrCheckEntity?> checkQrCode({
+    required String key,
+    int type = 1,
+  }) async {
     final data = {'key': key, 'type': type, 'timestamp': '${DateTime.now()}'};
     return await BujuanMusicManager().post<QrCheckEntity>(
       url: Api.checkQrCode,
@@ -156,7 +159,12 @@ mixin UserApi {
     int limit = 2000,
     int? offset,
   }) async {
-    final data = {'uid': uid, 'limit': limit, if (offset != null) 'offset': offset};
+    final data = {
+      'uid': uid,
+      'limit': limit,
+      // ignore: use_null_aware_elements
+      if (offset != null) 'offset': offset,
+    };
     return await BujuanMusicManager().post<LikeListEntity>(
       url: Api.userLikeList,
       options: createOption(),

@@ -36,11 +36,11 @@ class PlaylistState {
   }
 }
 
-class PlaylistNotifier extends StateNotifier<PlaylistState> {
-  PlaylistNotifier(this.ref) : super(const PlaylistState());
+class PlaylistNotifier extends Notifier<PlaylistState> {
+  @override
+  PlaylistState build() => const PlaylistState();
 
-  final Ref ref;
-  final _api = BujuanMusicManager();
+  late final _api = BujuanMusicManager();
 
   Future<void> fetchAll() async {
     final uid = ref.read(userProvider).uid;
@@ -136,6 +136,4 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 }
 
 final playlistProvider =
-    StateNotifierProvider<PlaylistNotifier, PlaylistState>((ref) {
-  return PlaylistNotifier(ref);
-});
+    NotifierProvider<PlaylistNotifier, PlaylistState>(PlaylistNotifier.new);

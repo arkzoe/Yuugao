@@ -50,10 +50,11 @@ class UserState {
   }
 }
 
-class UserNotifier extends StateNotifier<UserState> {
-  UserNotifier() : super(const UserState());
+class UserNotifier extends Notifier<UserState> {
+  @override
+  UserState build() => const UserState();
 
-  final _api = BujuanMusicManager();
+  late final _api = BujuanMusicManager();
 
   /// 启动时检查 cookie 是否仍有效（已持久化登录态时自动恢复）。
   Future<void> restore() async {
@@ -169,6 +170,4 @@ class UserNotifier extends StateNotifier<UserState> {
 }
 
 final userProvider =
-    StateNotifierProvider<UserNotifier, UserState>((ref) {
-  return UserNotifier();
-});
+    NotifierProvider<UserNotifier, UserState>(UserNotifier.new);

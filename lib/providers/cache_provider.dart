@@ -27,8 +27,9 @@ class CacheState {
   }
 }
 
-class CacheNotifier extends StateNotifier<CacheState> {
-  CacheNotifier() : super(const CacheState());
+class CacheNotifier extends Notifier<CacheState> {
+  @override
+  CacheState build() => const CacheState();
 
   final _service = CacheService.instance;
 
@@ -51,6 +52,4 @@ class CacheNotifier extends StateNotifier<CacheState> {
 }
 
 final cacheProvider =
-    StateNotifierProvider<CacheNotifier, CacheState>((ref) {
-  return CacheNotifier();
-});
+    NotifierProvider<CacheNotifier, CacheState>(CacheNotifier.new);

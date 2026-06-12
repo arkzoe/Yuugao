@@ -73,6 +73,7 @@ mixin PlaylistApi {
       'id': id,
       'n': n,
       's': s,
+      // ignore: use_null_aware_elements
       if (offset != null) 'offset': offset,
     };
     return await BujuanMusicManager().post<PlaylistDetailEntity>(

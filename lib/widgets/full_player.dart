@@ -97,7 +97,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
                   icon: const Icon(Icons.share),
                   onPressed: song == null
                       ? null
-                      : () => Share.share('我在听「${song.name}」- ${song.artist}'),
+                      : () => SharePlus.instance.share(ShareParams(text: '我在听「${song.name}」- ${song.artist}')),
                 ),
               ],
             ),
