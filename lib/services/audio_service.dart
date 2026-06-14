@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
+import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/services/cache_service.dart';
 
@@ -28,7 +30,14 @@ typedef SongFetcher = Future<List<Song>> Function(int offset, int limit);
 ///
 /// **串行操作守卫**：所有 player 平台通道调用通过 [_guard] 串行化，
 /// 杜绝后台扩展与用户操作间的 Connection aborted 错误。
+///
+/// **热缓存**：最近 5 首的 AudioSource 保留在内存，切回时零延迟。
+///
+/// **窗口边界预取**：当前播放位置逼近已解析窗口边界时触发下一批预解析。
 class AudioService {
+  /// 内存热缓存：最近使用的 AudioSource，用于快速切回。
+  final LinkedHashMap<int, AudioSource> _hotCache = LinkedHashMap();
+  static const int _hotCacheLimit = 5;
   AudioService._() {
     _bindCaching();
   }
@@ -122,6 +131,21 @@ class AudioService {
   /// 分页大小（与歌单详情页保持一致）。
   static const int _pageSize = 30;
 
+  // ═══ FM 模式 ═══
+
+  /// 是否处于私人 FM 模式。
+  bool _isFmMode = false;
+  bool get isFmMode => _isFmMode;
+
+  /// 当前 FM 曲目。
+  Song? _fmCurrentTrack;
+
+  /// 预加载的下一首 FM 曲目（双缓冲）。
+  Song? _fmNextTrack;
+
+  /// 防止 FM 并发加载的守卫。
+  bool _fmLoading = false;
+
   Stream<Duration> get positionStream => player.positionStream;
   Stream<Duration?> get durationStream => player.durationStream;
   Stream<PlayerState> get playerStateStream => player.playerStateStream;
@@ -145,7 +169,11 @@ class AudioService {
     int initialIndex = 0,
     SongFetcher? fetchMore,
     int totalCount = 0,
+    bool autoPlay = true,
   }) async {
+    // 加载歌单/专辑时退出 FM 模式
+    exitFmMode();
+
     final gen = ++_generation;
     _expandGen++; // 取消旧的扩充任务
 
@@ -181,7 +209,7 @@ class AudioService {
       );
       indexSuppressed = false;
       if (gen != _generation) return;
-      player.play();
+      if (autoPlay) player.play();
     } catch (_) {
       indexSuppressed = false;
       return;
@@ -280,12 +308,18 @@ class AudioService {
   }
 
   Future<void> next() async {
+    if (_isFmMode) {
+      await nextFm();
+      return;
+    }
     indexSuppressed = true;
     await player.seekToNext();
     indexSuppressed = false;
   }
 
   Future<void> previous() async {
+    // FM 模式下无上一首（随机推荐），忽略
+    if (_isFmMode) return;
     indexSuppressed = true;
     await player.seekToPrevious();
     indexSuppressed = false;
@@ -556,27 +590,314 @@ class AudioService {
 
   /// 构建 [song] 的 AudioSource。
   ///
-  /// 优先级：本地缓存 > 流式 URL（过期检查）> null（不可播）。
+  /// 优先级：热缓存 > 本地缓存 > 流式 URL（过期检查）> null（不可播）。
   AudioSource? _buildSource(Song song) {
+    // 第 0 优先：内存热缓存（最近 5 首切回零延迟）
+    if (_hotCache.containsKey(song.id)) {
+      return _hotCache[song.id];
+    }
+
     final tag = MediaItem(
       id: song.id.toString(),
       title: song.name,
       artist: song.artist,
       album: song.album,
-      artUri: song.coverUrl.isEmpty ? null : Uri.tryParse(song.coverUrl),
+      // 网易云 CDN 需要 ?param= 参数绕过防盗链；
+      // 否则 just_audio 加载通知栏封面时返回 403。
+      artUri: song.coverUrl.isEmpty
+          ? null
+          : Uri.tryParse(song.coverThumb(512)),
       duration: song.durationMs > 0 ? song.duration : null,
     );
 
     // 第 1 优先：本地缓存
     final localPath = CacheService.instance.getLocalPath(song.id);
     if (localPath != null) {
-      return AudioSource.file(localPath, tag: tag);
+      final src = AudioSource.file(localPath, tag: tag);
+      _addToHotCache(song.id, src);
+      return src;
     }
 
     // 第 2 优先：已解析的流式 URL（检查过期）
     final url = _resolvedUrls[song.id];
     if (url == null || url.isEmpty || _isUrlExpired(song.id)) return null;
-    return AudioSource.uri(Uri.parse(url), tag: tag);
+    final src = AudioSource.uri(Uri.parse(url), tag: tag);
+    _addToHotCache(song.id, src);
+    return src;
+  }
+
+  /// 将 AudioSource 加入热缓存；超出上限时淘汰最旧的。
+  void _addToHotCache(int id, AudioSource src) {
+    if (_hotCache.length >= _hotCacheLimit) {
+      _hotCache.remove(_hotCache.keys.first);
+    }
+    _hotCache[id] = src;
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  // 私人 FM：双缓冲模式
+  //
+  // FM API 只返回精简字段，封面/歌手可能不完整。
+  // 参照 YesPlayMusic 的做法：先拿 FM 歌曲 ID，再通过 songDetail
+  // 获取完整的歌曲信息，确保封面图和歌手名正确。
+  // ═════════════════════════════════════════════════════════════
+
+  /// 从 FM API 响应中获取 Song 列表。
+  ///
+  /// 优先通过 songDetail 获取完整信息（封面、歌手），
+  /// 失败时回退到 FM 原始数据直接解析。
+  Future<List<Song>> _fmIdsToSongs(List<PersonalFmData> data) async {
+    if (data.isEmpty) return [];
+
+    // 首选：通过 songDetail 获取完整歌曲信息
+    final ids = data.map((d) => d.id ?? 0).where((id) => id > 0).toList();
+    if (ids.isNotEmpty) {
+      try {
+        final detail = await BujuanMusicManager().songDetail(ids: ids);
+        if (detail != null && detail.songs != null && detail.songs!.isNotEmpty) {
+          return detail.songs!
+              .map((s) => Song.fromSongDetail(s))
+              .where((s) => s.id > 0)
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    // 回退：直接从 FM 原始数据构建（字段可能不完整但不阻塞播放）
+    return data
+        .map((d) => _songFromFmData(d))
+        .where((s) => s.id > 0)
+        .toList();
+  }
+
+  /// 从 FM 原始实体构建 Song（兼容 ar/al 和 artists/album 两种命名）。
+  Song _songFromFmData(PersonalFmData d) {
+    final artists = (d.ar ?? [])
+        .map((a) => a.name ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(' / ');
+    return Song(
+      id: d.id ?? 0,
+      name: d.name ?? '',
+      artist: artists,
+      album: d.al?.name ?? '',
+      coverUrl: d.al?.picUrl ?? '',
+      durationMs: d.dt ?? 0,
+      fee: d.fee ?? 0,
+    );
+  }
+
+  /// 启动私人 FM 模式。
+  ///
+  /// 拉取 FM → 通过 songDetail 获取完整信息 → 跳过无 URL 的歌曲，
+  /// 找到第一首可播曲目立即播放，第二首预加载到双缓冲。
+  Future<bool> startFm() async {
+    if (_fmLoading) return false;
+    _fmLoading = true;
+
+    try {
+      final res = await BujuanMusicManager().personalFm();
+      final data = res?.data;
+      if (data == null || data.isEmpty) return false;
+
+      final songs = await _fmIdsToSongs(data);
+      if (songs.isEmpty) return false;
+
+      // 找到第一首可播放的歌曲（跳过 VIP/无版权）
+      Song? first;
+      Song? second;
+      for (var i = 0; i < songs.length && first == null; i++) {
+        await _batchResolve([songs[i]]);
+        if (_buildSource(songs[i]) != null) {
+          first = songs[i];
+          // 找下一首作为双缓冲
+          for (var j = i + 1; j < songs.length && second == null; j++) {
+            await _batchResolve([songs[j]]);
+            if (_buildSource(songs[j]) != null) second = songs[j];
+          }
+        }
+      }
+
+      if (first == null) return false;
+
+      _isFmMode = true;
+      _generation++;
+      _fmCurrentTrack = first;
+      _fmNextTrack = second;
+
+      final src = _buildSource(first);
+      if (src == null) {
+        _isFmMode = false;
+        return false;
+      }
+
+      _queue = [first];
+      _resolvedUrls.clear();
+      _resolvedExpiry.clear();
+      _fullCandidates = List.from(_queue);
+
+      indexSuppressed = true;
+      try {
+        await player.setAudioSources([src], initialIndex: 0);
+        indexSuppressed = false;
+        player.play();
+      } catch (_) {
+        indexSuppressed = false;
+        _isFmMode = false;
+        return false;
+      }
+      _queueController.add(List.unmodifiable(_queue));
+
+      if (_fmNextTrack != null) {
+        _prefetchFmNext();
+      }
+      _triggerFmCache();
+      return true;
+    } catch (_) {
+      _isFmMode = false;
+      return false;
+    } finally {
+      _fmLoading = false;
+    }
+  }
+
+  /// FM 切到下一首。
+  ///
+  /// 利用双缓冲：播放已预加载的下一首，同时后台拉取新的下一首。
+  Future<bool> nextFm() async {
+    if (!_isFmMode || _fmLoading) return false;
+    _fmLoading = true;
+
+    try {
+      Song? next;
+
+      if (_fmNextTrack != null) {
+        // 双缓冲命中：检查预解析的 URL 是否仍有效
+        if (_buildSource(_fmNextTrack!) != null) {
+          next = _fmNextTrack;
+          _fmNextTrack = null;
+        }
+      }
+
+      if (next == null) {
+        // 双缓冲不可用：重新拉取
+        final res = await BujuanMusicManager().personalFm();
+        final data = res?.data;
+        if (data == null || data.isEmpty) return false;
+
+        final songs = await _fmIdsToSongs(data);
+        if (songs.isEmpty) return false;
+
+        // 找第一首可播的
+        for (final s in songs) {
+          await _batchResolve([s]);
+          if (_buildSource(s) != null) {
+            next = s;
+            // 剩余的作为双缓冲
+            final idx = songs.indexOf(s);
+            if (idx + 1 < songs.length) {
+              for (var j = idx + 1; j < songs.length; j++) {
+                await _batchResolve([songs[j]]);
+                if (_buildSource(songs[j]) != null) {
+                  _fmNextTrack = songs[j];
+                  break;
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
+
+      if (next == null) return false;
+
+      _fmCurrentTrack = next;
+      _resolvedUrls.clear();
+      _resolvedExpiry.clear();
+      await _batchResolve([next]);
+      final src = _buildSource(next);
+      if (src == null) return false;
+
+      _queue = [next];
+      _fullCandidates = List.from(_queue);
+
+      indexSuppressed = true;
+      try {
+        await player.setAudioSources([src], initialIndex: 0);
+        indexSuppressed = false;
+        player.play();
+      } catch (_) {
+        indexSuppressed = false;
+        return false;
+      }
+      _queueController.add(List.unmodifiable(_queue));
+
+      _triggerFmCache();
+      _prefetchFmNext();
+
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _fmLoading = false;
+    }
+  }
+
+  /// FM 垃圾桶：跳过当前歌曲并标记为不喜欢。
+  Future<void> trashFm() async {
+    if (!_isFmMode) return;
+    final currentId = _fmCurrentTrack?.id;
+    final moved = await nextFm();
+    if (moved && currentId != null) {
+      BujuanMusicManager().fmTrash(id: currentId);
+    }
+  }
+
+  /// 后台预加载下一首 FM 曲目（跳过无 URL 的歌曲）。
+  Future<void> _prefetchFmNext() async {
+    if (_fmNextTrack != null) return;
+    try {
+      final res = await BujuanMusicManager().personalFm();
+      final data = res?.data;
+      if (data == null || data.isEmpty) return;
+
+      final songs = await _fmIdsToSongs(data);
+      if (songs.isEmpty) return;
+
+      // 找第一首有可用 URL 的
+      for (final s in songs) {
+        final currentGen = _generation;
+        await _batchResolve([s]);
+        if (_generation != currentGen) return;
+        if (_buildSource(s) != null) {
+          _fmNextTrack = s;
+          return;
+        }
+      }
+    } catch (_) {
+      _fmNextTrack = null;
+    }
+  }
+
+  /// 触发 FM 当前首缓存下载。
+  void _triggerFmCache() {
+    if (_fmCurrentTrack == null) return;
+    final url = _resolvedUrls[_fmCurrentTrack!.id];
+    if (url != null && url.isNotEmpty) {
+      CacheService.instance.download(
+        url,
+        _fmCurrentTrack!.id,
+        ext: _resolvedExt[_fmCurrentTrack!.id] ?? 'mp3',
+      );
+    }
+  }
+
+  /// 退出 FM 模式。
+  void exitFmMode() {
+    _isFmMode = false;
+    _fmCurrentTrack = null;
+    _fmNextTrack = null;
+    _generation++;
   }
 
   // ═════════════════════════════════════════════════════════════
@@ -610,6 +931,21 @@ class AudioService {
             );
           }
         }
+      }
+
+      // ── 窗口边界预取 ──
+      // 当前播放位置距已解析窗口边界 < 5 首时，触发后台扩展
+      // 将下一批歌曲的 URL 提前解析好，用户切歌时无需等待 HTTP
+      final remainingAfterWindow = _fullCandidates.length - _queue.length;
+      if (remainingAfterWindow > 0 &&
+          idx >= _queue.length - _resolveWindow + 5 &&
+          _fetchMore != null) {
+        _expandForward(
+          _generation,
+          _fullCandidates,
+          _fullCandidates.length - remainingAfterWindow,
+          _fullCandidates.length,
+        );
       }
     });
   }
