@@ -4,6 +4,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/services/audio_service.dart';
 
+// ignore: unused_import — SongFetcher 在 play() 签名中使用
+export 'package:yuugao/services/audio_service.dart' show SongFetcher;
+
 enum PlayMode { sequential, shuffle, repeatOne }
 
 class PlayerState {
@@ -110,13 +113,26 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   /// 播放一首歌，可附带其所属队列。无队列时单曲成队。
-  Future<void> play(Song song, {List<Song>? queue}) async {
+  ///
+  /// 传入 [fetchMore] 回调后，播放器在当前候选列表耗尽时自动分页拉取后续歌曲，
+  /// 配合滑动窗口实现超长歌单的内存友好播放。
+  Future<void> play(
+    Song song, {
+    List<Song>? queue,
+    SongFetcher? fetchMore,
+    int totalCount = 0,
+  }) async {
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
     _intendedIndex = index;
     state = state.copyWith(queue: list, currentIndex: index);
-    await _audio.setQueue(list, initialIndex: index);
+    await _audio.setQueue(
+      list,
+      initialIndex: index,
+      fetchMore: fetchMore,
+      totalCount: totalCount,
+    );
     _intendedIndex = null; // setQueue 完成，后续 currentIndexStream 正常接受
     final q = _audio.queue;
     final cur = _audio.player.currentIndex;
@@ -174,6 +190,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   Future<void> setMode(PlayMode mode) async {
     state = state.copyWith(mode: mode);
+    _audio.setPlayMode(mode == PlayMode.sequential);
     switch (mode) {
       case PlayMode.sequential:
         await _audio.setShuffle(false);
