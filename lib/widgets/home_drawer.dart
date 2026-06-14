@@ -7,92 +7,75 @@ import 'package:yuugao/providers/playlist_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
-/// 首页侧边栏：用户信息、设置入口、退出登录。
+/// 抽屉面板宽度（仅图标，紧凑模式）
+const homeDrawerWidth = 72.0;
+
+/// 首页抽屉面板：头像 + 功能图标，无文字。
+/// 作为普通 widget 嵌入 Stack 中，配合主页面的平移动画实现"推入"效果。
 class HomeDrawer extends ConsumerWidget {
-  const HomeDrawer({super.key});
+  final VoidCallback? onClose;
+
+  const HomeDrawer({super.key, this.onClose});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
     final user = ref.watch(userProvider);
 
-    return Drawer(
-      backgroundColor: Theme.of(context).cardColor,
-      child: SafeArea(
-        child: Column(
-          children: [
-            // ── 用户信息 ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-              child: Row(
-                children: [
-                  ClipOval(
-                    child: CoverImage(
-                      url: user.avatarUrl,
-                      size: 48,
-                      radius: 24,
-                    ),
+    return Material(
+      color: Theme.of(context).cardColor,
+      child: Container(
+        width: homeDrawerWidth,
+        decoration: BoxDecoration(
+          border: Border(
+            right: BorderSide(
+              color: colors.divider,
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── 头像 ──
+              Padding(
+                padding: const EdgeInsets.only(top: 24, bottom: 20),
+                child: ClipOval(
+                  child: CoverImage(
+                    url: user.avatarUrl,
+                    size: 44,
+                    radius: 22,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user.nickname,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '网易云音乐',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
 
-            const Divider(height: 1),
+              // ── 设置 ──
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                tooltip: '设置',
+                onPressed: () {
+                  onClose?.call();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsPage()),
+                  );
+                },
+              ),
 
-            // ── 设置 ──
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('设置'),
-              trailing: const Icon(Icons.chevron_right, size: 20),
-              onTap: () {
-                // 先关闭抽屉，再打开设置页
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
-              },
-            ),
+              const Spacer(),
 
-            const Spacer(),
-
-            // ── 退出登录 ──
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.logout, color: colors.primary),
-              title: Text('退出登录', style: TextStyle(color: colors.primary)),
-              onTap: () async {
-                Navigator.of(context).pop();
-                await ref.read(userProvider.notifier).logout();
-                ref.read(playlistProvider.notifier).clear();
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+              // ── 退出登录 ──
+              IconButton(
+                icon: Icon(Icons.logout, color: colors.primary),
+                tooltip: '退出登录',
+                onPressed: () async {
+                  onClose?.call();
+                  await ref.read(userProvider.notifier).logout();
+                  ref.read(playlistProvider.notifier).clear();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

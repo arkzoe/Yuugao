@@ -19,12 +19,20 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isDrawerOpen = false;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(_load);
+  }
+
+  void _toggleDrawer() => setState(() => _isDrawerOpen = !_isDrawerOpen);
+  void _openDrawer() {
+    if (!_isDrawerOpen) setState(() => _isDrawerOpen = true);
+  }
+  void _closeDrawer() {
+    if (_isDrawerOpen) setState(() => _isDrawerOpen = false);
   }
 
   Future<void> _load() async {
@@ -46,41 +54,68 @@ class _HomePageState extends ConsumerState<HomePage> {
     final user = ref.watch(userProvider);
     final playlistState = ref.watch(playlistProvider);
 
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: const HomeDrawer(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(user.avatarUrl, colors),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Text(
-                        '${_greeting()}，${user.nickname}',
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.bold),
+    return Stack(
+      children: [
+        // ── 第 1 层：抽屉面板（底层）──
+        HomeDrawer(onClose: _closeDrawer),
+
+        // ── 第 2 层：主页面 + 平移动画 ──
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(
+            _isDrawerOpen ? homeDrawerWidth : 0,
+            0,
+            0,
+          ),
+          child: Scaffold(
+            body: SafeArea(
+              child: Column(
+                children: [
+                  _buildAppBar(user.avatarUrl, colors),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                            child: Text(
+                              '${_greeting()}，${user.nickname}',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: HomeActionButtons(),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildPlaylistSection(playlistState, colors),
+                        ],
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: HomeActionButtons(),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildPlaylistSection(playlistState, colors),
-                  ],
-                ),
+                  ),
+                  const MiniPlayerBar(),
+                ],
               ),
             ),
-            const MiniPlayerBar(),
-          ],
+          ),
         ),
-      ),
+
+        // ── 第 3 层：左边缘拖拽打开 ──
+        if (!_isDrawerOpen)
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 20,
+            child: _EdgeDragDetector(onDragOpen: _openDrawer),
+          ),
+      ],
     );
   }
 
@@ -90,7 +125,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+            onTap: _toggleDrawer,
             child: ClipOval(
               child: CoverImage(url: avatar, size: 36, radius: 18),
             ),
@@ -99,9 +134,9 @@ class _HomePageState extends ConsumerState<HomePage> {
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const SearchPage(),
-              ));
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SearchPage()),
+              );
             },
           ),
         ],
@@ -110,7 +145,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildPlaylistSection(PlaylistState state, ThemeColors colors) {
-    // 包含"我喜欢的音乐"在内的全部歌单，单列展示。
     final all = [...state.created, ...state.subscribed];
     if (all.isEmpty) {
       return Padding(
@@ -129,9 +163,10 @@ class _HomePageState extends ConsumerState<HomePage> {
             children: [
               Icon(Icons.queue_music, color: colors.primary, size: 18),
               const SizedBox(width: 6),
-              Text('我的歌单',
-                  style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                '我的歌单',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
             ],
           ),
         ),
@@ -142,6 +177,36 @@ class _HomePageState extends ConsumerState<HomePage> {
           itemBuilder: (context, i) => PlaylistCard(playlist: all[i]),
         ),
       ],
+    );
+  }
+}
+
+/// 左边缘拖拽检测器 — 检测从屏幕左边缘向右的拖拽手势来打开抽屉。
+class _EdgeDragDetector extends StatefulWidget {
+  final VoidCallback onDragOpen;
+  const _EdgeDragDetector({required this.onDragOpen});
+
+  @override
+  State<_EdgeDragDetector> createState() => _EdgeDragDetectorState();
+}
+
+class _EdgeDragDetectorState extends State<_EdgeDragDetector> {
+  bool _isDragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _isDragging = true,
+      onPointerMove: (event) {
+        if (!_isDragging) return;
+        if (event.delta.dx > 10) {
+          _isDragging = false;
+          widget.onDragOpen();
+        }
+      },
+      onPointerUp: (_) => _isDragging = false,
+      onPointerCancel: (_) => _isDragging = false,
     );
   }
 }
