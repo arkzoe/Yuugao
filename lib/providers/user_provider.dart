@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -91,6 +93,7 @@ class UserNotifier extends Notifier<UserState> {
           error: null,
         );
         await _refreshUserInfo();
+        unawaited(_prefetchUserData()); // 后台预加载
         return true;
       }
       state = state.copyWith(error: '登录失败 (code=${res?.code})');
@@ -138,6 +141,7 @@ class UserNotifier extends Notifier<UserState> {
       // HomePage.initState 中 fetchAll 会因为 uid 仍为 null 而失败。
       await _refreshUserInfo();
       state = state.copyWith(status: AuthStatus.authenticated, error: null);
+      unawaited(_prefetchUserData()); // 后台预加载喜欢列表和歌单
     }
     return code;
   }
@@ -167,6 +171,20 @@ class UserNotifier extends Notifier<UserState> {
     }
     if (cookies.isNotEmpty) {
       await jar.saveFromResponse(uri, cookies);
+    }
+  }
+
+  /// 登录成功后后台预加载喜欢列表和歌单，加速首页渲染。
+  Future<void> _prefetchUserData() async {
+    final uid = state.uid;
+    if (uid == null) return;
+    try {
+      await Future.wait([
+        _api.userLikeList(uid: uid.toString()),
+        _api.userPlaylist(uid: uid.toString()),
+      ]);
+    } catch (_) {
+      // 预加载失败不影响主流程
     }
   }
 

@@ -258,7 +258,7 @@ class _QrLoginTabState extends ConsumerState<_QrLoginTab> {
       _qrUrl = res.qrUrl;
       _hint = '请用 App 扫码';
     });
-    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _check());
+    _poll = Timer.periodic(const Duration(milliseconds: 1000), (_) => _check());
   }
 
   Future<void> _check() async {
@@ -272,7 +272,7 @@ class _QrLoginTabState extends ConsumerState<_QrLoginTab> {
       switch (code) {
         case 800:
           _poll?.cancel();
-          setState(() => _hint = '二维码已过期，点击刷新');
+          _genQr(); // 自动重新生成二维码
           break;
         case 801:
           setState(() => _hint = '请用网易云音乐 App 扫码');
