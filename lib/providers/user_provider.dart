@@ -32,8 +32,12 @@ class UserState {
   String get nickname =>
       userProfile?.nickname ?? profile?.nickname ?? '游客';
 
-  String get avatarUrl =>
-      userProfile?.avatarUrl ?? profile?.avatarUrl ?? '';
+  String get avatarUrl {
+    final raw = userProfile?.avatarUrl ?? profile?.avatarUrl ?? '';
+    return raw.startsWith('http://')
+        ? raw.replaceFirst('http://', 'https://')
+        : raw;
+  }
 
   UserState copyWith({
     AuthStatus? status,

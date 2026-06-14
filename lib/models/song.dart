@@ -3,6 +3,10 @@ import 'package:yuugao/CloudMusic/api/recommend/entity/recommend_song_entity.dar
 import 'package:yuugao/CloudMusic/api/search/entity/search_entity.dart';
 import 'package:yuugao/CloudMusic/api/song/entity/song_detail_entity.dart';
 
+/// 将 http:// 强制转为 https://，网易云 CDN 对明文请求返回 403。
+String _safeUrl(String url) =>
+    url.startsWith('http://') ? url.replaceFirst('http://', 'https://') : url;
+
 /// 统一的 UI 歌曲模型。
 ///
 /// 各接口返回的歌曲结构不同（每日推荐 / 歌单 track / 搜索 / 歌曲详情），
@@ -42,7 +46,7 @@ class Song {
       name: s.name ?? '',
       artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
       album: s.al?.name ?? '',
-      coverUrl: s.al?.picUrl ?? '',
+      coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,
       fee: s.fee ?? 0,
     );
@@ -54,7 +58,7 @@ class Song {
       name: t.name ?? '',
       artist: (t.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
       album: t.al?.name ?? '',
-      coverUrl: t.al?.picUrl ?? '',
+      coverUrl: _safeUrl(t.al?.picUrl ?? ''),
       durationMs: t.dt ?? 0,
       fee: t.fee ?? 0,
     );
@@ -66,7 +70,7 @@ class Song {
       name: s.name ?? '',
       artist: (s.artists ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
       album: s.album?.name ?? '',
-      coverUrl: s.album?.picUrl ?? '',
+      coverUrl: _safeUrl(s.album?.picUrl ?? ''),
       durationMs: s.duration ?? 0,
       fee: s.fee ?? 0,
     );
@@ -78,7 +82,7 @@ class Song {
       name: s.name ?? '',
       artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
       album: s.al?.name ?? '',
-      coverUrl: s.al?.picUrl ?? '',
+      coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,
       fee: s.fee ?? 0,
     );
