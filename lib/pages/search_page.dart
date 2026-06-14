@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 
@@ -47,6 +47,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
@@ -55,10 +56,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           autofocus: true,
           textInputAction: TextInputAction.search,
           onSubmitted: (_) => _search(),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: '搜索歌曲',
             border: InputBorder.none,
-            hintStyle: TextStyle(color: AppColors.textSecondary),
+            hintStyle: TextStyle(color: colors.textSecondary),
           ),
         ),
         actions: [
@@ -77,17 +78,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Widget _buildBody() {
+    final colors = ref.watch(currentColorsProvider);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (!_searched) {
-      return const Center(
+      return Center(
         child: Text('输入关键词搜索',
-            style: TextStyle(color: AppColors.textSecondary)),
+            style: TextStyle(color: colors.textSecondary)),
       );
     }
     if (_results.isEmpty) {
-      return const Center(
+      return Center(
         child: Text('没有找到结果',
-            style: TextStyle(color: AppColors.textSecondary)),
+            style: TextStyle(color: colors.textSecondary)),
       );
     }
     return ListView.builder(

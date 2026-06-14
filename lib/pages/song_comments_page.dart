@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/song/entity/comment_entity.dart';
 import 'package:yuugao/models/song.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
 /// 歌曲评论独立页。
-class SongCommentsPage extends StatefulWidget {
+class SongCommentsPage extends ConsumerStatefulWidget {
   final Song song;
 
   const SongCommentsPage({super.key, required this.song});
 
   @override
-  State<SongCommentsPage> createState() => _SongCommentsPageState();
+  ConsumerState<SongCommentsPage> createState() => _SongCommentsPageState();
 }
 
-class _SongCommentsPageState extends State<SongCommentsPage> {
+class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
   bool _loading = true;
   List<CommentItem> _hot = [];
   List<CommentItem> _latest = [];
@@ -40,10 +41,12 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('歌曲评论'),
-        backgroundColor: AppColors.background,
+        backgroundColor: colors.background,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -64,59 +67,59 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                             Text(widget.song.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary)),
+                                    color: colors.textPrimary)),
                             const SizedBox(height: 4),
                             Text(
                                 widget.song.artist.isEmpty
                                     ? '未知歌手'
                                     : widget.song.artist,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 13,
-                                    color: AppColors.textSecondary)),
+                                    color: colors.textSecondary)),
                           ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Divider(color: AppColors.divider),
+                Divider(color: colors.divider),
                 if (_hot.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                     child: Text('热门评论',
                         style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
+                            color: colors.textPrimary)),
                   ),
-                  ..._hot.map((c) => _commentTile(c)),
-                  const Divider(color: AppColors.divider),
+                  ..._hot.map((c) => _commentTile(c, colors)),
+                  Divider(color: colors.divider),
                 ],
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: Text('最新评论',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary)),
+                          color: colors.textPrimary)),
                 ),
                 if (_latest.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Text('暂无评论',
-                        style: TextStyle(color: AppColors.textSecondary)),
+                        style: TextStyle(color: colors.textSecondary)),
                   )
                 else
-                  ..._latest.map((c) => _commentTile(c)),
+                  ..._latest.map((c) => _commentTile(c, colors)),
               ],
             ),
     );
   }
 
-  Widget _commentTile(CommentItem c) {
+  Widget _commentTile(CommentItem c, ThemeColors colors) {
     final avatarUrl = c.user?.avatarUrl ?? '';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -130,9 +133,9 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
               child: avatarUrl.isNotEmpty
                   ? CoverImage(url: avatarUrl, size: 32, radius: 0)
                   : Container(
-                      color: AppColors.card,
-                      child: const Icon(Icons.person,
-                          size: 16, color: AppColors.textSecondary),
+                      color: colors.card,
+                      child: Icon(Icons.person,
+                          size: 16, color: colors.textSecondary),
                     ),
             ),
           ),
@@ -144,26 +147,26 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                 Row(
                   children: [
                     Text(c.user?.nickname ?? '匿名',
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                        style: TextStyle(
+                            fontSize: 12, color: colors.textSecondary)),
                     const Spacer(),
                     Text('${c.likedCount ?? 0}',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary)),
-                    const Icon(Icons.thumb_up_alt_outlined,
-                        size: 13, color: AppColors.textSecondary),
+                        style: TextStyle(
+                            fontSize: 11, color: colors.textSecondary)),
+                    Icon(Icons.thumb_up_alt_outlined,
+                        size: 13, color: colors.textSecondary),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(c.content ?? '',
-                    style: const TextStyle(
-                        fontSize: 14, color: AppColors.textPrimary)),
+                    style: TextStyle(
+                        fontSize: 14, color: colors.textPrimary)),
                 if ((c.time ?? 0) > 0) ...[
                   const SizedBox(height: 2),
                   Text(
                     _fmtTime(c.time!),
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary),
+                    style: TextStyle(
+                        fontSize: 10, color: colors.textSecondary),
                   ),
                 ],
               ],

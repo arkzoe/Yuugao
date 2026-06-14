@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
@@ -27,9 +27,20 @@ class PlaylistDetailPage extends ConsumerStatefulWidget {
 }
 
 class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
+  static const int _pageSize = 30;
+
   List<Song> _songs = [];
+  /// 歌单全量曲目 ID（第一次 playlistDetail 即返回），用于分页索引。
+  List<int> _allTrackIds = [];
+  /// 已加载的曲目 ID，防止 _fetchPage 和 _fetchMore 重叠时重复添加。
+  final Set<int> _loadedIds = {};
   String _creator = '';
-  bool _loading = true;
+  bool _initialLoading = true;
+  bool _loadingMore = false;
+  int _totalCount = 0;
+  bool _exhausted = false;
+
+  final _scrollCtrl = ScrollController();
 
   // 搜索
   bool _searching = false;
@@ -39,6 +50,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   @override
   void dispose() {
+    _scrollCtrl.dispose();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -58,56 +70,108 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _scrollCtrl.addListener(_onScroll);
+    _loadFirstPage();
   }
 
-  Future<void> _load() async {
+  /// 滚动到底部时自动加载下一页。
+  void _onScroll() {
+    if (_exhausted || _loadingMore || _initialLoading) return;
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 300) {
+      _loadNextPage();
+    }
+  }
+
+  /// 首屏：playlistDetail 拉取前 [_pageSize] 首 + 全量 trackIds。
+  Future<void> _loadFirstPage() async {
     try {
       final res = await BujuanMusicManager().playlistDetail(
         id: widget.playlistId,
-        n: 1000,
+        n: _pageSize,
       );
       final pl = res?.playlist;
-      if (pl == null) { setState(() => _loading = false); return; }
+      if (pl == null) {
+        if (mounted) setState(() => _initialLoading = false);
+        return;
+      }
 
       _creator = pl.creator?.nickname ?? '';
-      final total = pl.trackCount ?? 0;
+      _totalCount = pl.trackCount ?? 0;
 
-      final songs = <Song>[
+      // 全量 ID（用于后续分页；playlistDetail 始终返回全量 trackIds）
+      _allTrackIds = [
+        for (final ti in (pl.trackIds ?? []))
+          if (ti.id != null && ti.id! > 0) ti.id!,
+      ];
+      // fallback：若 trackIds 为空但 tracks 有数据，从 tracks 提取 ID
+      if (_allTrackIds.isEmpty && (pl.tracks?.isNotEmpty ?? false)) {
+        _allTrackIds = [
+          for (final t in pl.tracks!)
+            if (t.id != null && t.id! > 0) t.id!,
+        ];
+      }
+
+      _songs = [
         for (final t in (pl.tracks ?? [])) Song.fromPlaylistTrack(t),
       ];
+      _loadedIds.addAll(_songs.map((s) => s.id));
 
-      final allIds = <int>[];
-      for (final ti in (pl.trackIds ?? [])) {
-        if (ti.id != null && ti.id! > 0) allIds.add(ti.id!);
-      }
-
-      if (songs.length < total) {
-        final haveIds = songs.map((s) => s.id).toSet();
-        final missing = allIds.where((id) => !haveIds.contains(id)).toList();
-
-        if (missing.isNotEmpty) {
-          const chunk = 1000;
-          for (var i = 0; i < missing.length; i += chunk) {
-            final batchIds = missing.skip(i).take(chunk).toList();
-            final detail = await BujuanMusicManager().songDetail(ids: batchIds);
-            final batch = (detail?.songs ?? [])
-                .map((s) => Song.fromSongDetail(s))
-                .where((s) => s.id > 0)
-                .toList();
-            songs.addAll(batch);
-          }
-        }
-      }
-
-      final songMap = {for (final s in songs) s.id: s};
-      _songs = allIds
-          .map((id) => songMap[id])
-          .where((s) => s != null)
-          .cast<Song>()
-          .toList();
+      _exhausted = _songs.length >= _totalCount;
     } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    if (mounted) setState(() => _initialLoading = false);
+  }
+
+  /// 下一页：通过 songDetail 按 trackIds 批量拉取详情。
+  Future<void> _loadNextPage() async {
+    if (_loadingMore || _exhausted) return;
+    _loadingMore = true;
+    if (mounted) setState(() {});
+
+    await _fetchPage(_songs.length, _pageSize);
+
+    _loadingMore = false;
+    if (mounted) setState(() {});
+  }
+
+  /// 按 trackIds 分页拉取（页面和播放器后台扩展共用）。
+  Future<void> _fetchPage(int offset, int limit) async {
+    final end = (offset + limit).clamp(0, _allTrackIds.length);
+    // 跳过已加载的 ID（防止与播放器后台扩展重叠时重复）
+    final batchIds = _allTrackIds
+        .sublist(offset, end)
+        .where((id) => !_loadedIds.contains(id))
+        .toList();
+    if (batchIds.isEmpty) {
+      _exhausted = _songs.length >= _totalCount;
+      return;
+    }
+    try {
+      final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+      final batch = [
+        for (final s in (detail?.songs ?? []))
+          if (s.id > 0) Song.fromSongDetail(s),
+      ];
+      _loadedIds.addAll(batch.map((s) => s.id));
+      _songs.addAll(batch);
+      _exhausted = _songs.length >= _totalCount;
+    } catch (_) {}
+  }
+
+  /// 供 AudioService 后台分页拉取的 fetcher。
+  Future<List<Song>> _fetchMore(int offset, int limit) async {
+    final end = (offset + limit).clamp(0, _allTrackIds.length);
+    final batchIds = _allTrackIds.sublist(offset, end);
+    if (batchIds.isEmpty) return [];
+    try {
+      final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+      return [
+        for (final s in (detail?.songs ?? []))
+          if (s.id > 0) Song.fromSongDetail(s),
+      ];
+    } catch (_) {
+      return [];
+    }
   }
 
   void _closeSearch() {
@@ -121,6 +185,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final list = _filtered;
 
     return Scaffold(
@@ -129,6 +194,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           children: [
             Expanded(
               child: CustomScrollView(
+                controller: _scrollCtrl,
                 slivers: [
                   SliverAppBar(
                     pinned: true,
@@ -144,30 +210,30 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                               controller: _searchCtrl,
                               focusNode: _searchFocus,
                               autofocus: true,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 14,
-                                  color: AppColors.textPrimary),
+                                  color: colors.textPrimary),
                               decoration: InputDecoration(
                                 hintText: '搜索歌名或歌手…',
-                                hintStyle: const TextStyle(
+                                hintStyle: TextStyle(
                                     fontSize: 13,
-                                    color: AppColors.textSecondary),
-                                prefixIcon: const Icon(Icons.search,
+                                    color: colors.textSecondary),
+                                prefixIcon: Icon(Icons.search,
                                     size: 18,
-                                    color: AppColors.textSecondary),
+                                    color: colors.textSecondary),
                                 suffixIcon: _query.isNotEmpty
                                     ? GestureDetector(
                                         onTap: () {
                                           _searchCtrl.clear();
                                           setState(() => _query = '');
                                         },
-                                        child: const Icon(Icons.clear,
+                                        child: Icon(Icons.clear,
                                             size: 18,
-                                            color: AppColors.textSecondary),
+                                            color: colors.textSecondary),
                                       )
                                     : null,
                                 filled: true,
-                                fillColor: AppColors.card,
+                                fillColor: colors.card,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide.none,
@@ -221,8 +287,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: Text('by $_creator',
-                            style: const TextStyle(
-                                color: AppColors.textSecondary,
+                            style: TextStyle(
+                                color: colors.textSecondary,
                                 fontSize: 12)),
                       ),
                     ),
@@ -231,14 +297,18 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                       onTap: _songs.isEmpty
                           ? null
                           : () => ref.read(playerProvider.notifier).play(
-                              _songs.first, queue: _songs),
+                                _songs.first,
+                                queue: _songs,
+                                fetchMore: _exhausted ? null : _fetchMore,
+                                totalCount: _totalCount,
+                              ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 12),
                         child: Row(
                           children: [
-                            const Icon(Icons.play_circle_fill,
-                                color: AppColors.primary, size: 28),
+                            Icon(Icons.play_circle_fill,
+                                color: colors.primary, size: 28),
                             const SizedBox(width: 8),
                             Text('播放全部',
                                 style: const TextStyle(
@@ -247,29 +317,29 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                             const SizedBox(width: 6),
                             Text(
                                 _query.isEmpty
-                                    ? '(${_songs.length})'
-                                    : '(${list.length}/${_songs.length})',
-                                style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                    ? '($_totalCount)'
+                                    : '(${list.length}/$_totalCount)',
+                                style: TextStyle(
+                                    color: colors.textSecondary,
                                     fontSize: 13)),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  if (_loading)
+                  if (_initialLoading)
                     const SliverFillRemaining(
                       child: Center(child: CircularProgressIndicator()),
                     )
-                  else if (list.isEmpty && !_loading)
-                    const SliverFillRemaining(
+                  else if (list.isEmpty && !_initialLoading)
+                    SliverFillRemaining(
                       child: Center(
                         child: Text('未找到匹配歌曲',
                             style:
-                                TextStyle(color: AppColors.textSecondary)),
+                                TextStyle(color: colors.textSecondary)),
                       ),
                     )
-                  else
+                  else ...[
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, i) => SongTile(
@@ -280,8 +350,37 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                           label: _originIndex(list[i]),
                         ),
                         childCount: list.length,
+                        addAutomaticKeepAlives: false,
                       ),
                     ),
+                    // 底部指示器
+                    SliverToBoxAdapter(
+                      child: _loadingMore
+                          ? const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          : _exhausted && _songs.isNotEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Center(
+                                    child: Text(
+                                        '已加载全部 $_totalCount 首',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: colors.textSecondary)),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                    ),
+                  ],
                 ],
               ),
             ),

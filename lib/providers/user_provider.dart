@@ -134,8 +134,10 @@ class UserNotifier extends Notifier<UserState> {
       // 服务器把登录 cookie 放在 JSON body 而非 Set-Cookie 头，
       // 需手动解析并写入 CookieJar，否则后续 userInfo 等接口无鉴权。
       await _saveQrCookies(res?.cookie);
-      state = state.copyWith(status: AuthStatus.authenticated, error: null);
+      // 先拉取用户信息再标记已登录，否则 _AuthGate 立即切到 HomePage，
+      // HomePage.initState 中 fetchAll 会因为 uid 仍为 null 而失败。
       await _refreshUserInfo();
+      state = state.copyWith(status: AuthStatus.authenticated, error: null);
     }
     return code;
   }
@@ -145,15 +147,22 @@ class UserNotifier extends Notifier<UserState> {
     if (cookieStr == null || cookieStr.trim().isEmpty) return;
     final jar = globalCookieJar;
     if (jar == null) return;
-    final uri = Uri.parse(defaultUrl);
+    // 使用与 Dio baseUrl 一致的 host（即 defaultUrl = 'https://music.163.com'），
+    // 但带上 path '/' 确保 cookie_jar 的 path 匹配逻辑能覆盖所有 API 子路径。
+    final uri = Uri.parse('$defaultUrl/');
     final cookies = <Cookie>[];
     for (final part in cookieStr.split(';')) {
-      final eq = part.indexOf('=');
+      final trimmed = part.trim();
+      if (trimmed.isEmpty) continue;
+      final eq = trimmed.indexOf('=');
       if (eq <= 0) continue;
-      final name = part.substring(0, eq).trim();
-      final value = part.substring(eq + 1).trim();
+      final name = trimmed.substring(0, eq).trim();
+      final value = trimmed.substring(eq + 1).trim();
       if (name.isNotEmpty && value.isNotEmpty) {
-        cookies.add(Cookie(name, value));
+        // 显式设置 domain 和 path，避免依赖 cookie_jar 对 null 的默认处理。
+        cookies.add(Cookie(name, value)
+          ..domain = Uri.parse(defaultUrl).host
+          ..path = '/');
       }
     }
     if (cookies.isNotEmpty) {

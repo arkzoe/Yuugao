@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
-import 'package:yuugao/theme.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -32,37 +32,33 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   @override
   Widget build(BuildContext context) {
-    // 登录成功后由 _AuthGate 自动切换，这里仅监听报错
+    // 登录成功后跳转到首页。_AuthGate 也会同步切换，这里作为显式导航兜底。
     ref.listen(userProvider.select((s) => s.status), (prev, next) {
       if (next == AuthStatus.authenticated && mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
       }
     });
 
+    final colors = ref.watch(currentColorsProvider);
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             const SizedBox(height: 40),
-            const Text(
-              'yuugao',
+            Text(
+              'Yuugao',
               style: TextStyle(
                 fontSize: 36,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+                color: colors.primary,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '网易云音乐',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             TabBar(
               controller: _tab,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
+              indicatorColor: colors.primary,
+              labelColor: colors.primary,
+              unselectedLabelColor: colors.textSecondary,
               tabs: const [
                 Tab(text: '手机号登录'),
                 Tab(text: '扫码登录'),
@@ -155,6 +151,7 @@ class _PhoneLoginTabState extends ConsumerState<_PhoneLoginTab> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -197,7 +194,7 @@ class _PhoneLoginTabState extends ConsumerState<_PhoneLoginTab> {
             child: ElevatedButton(
               onPressed: _loading ? null : _login,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: colors.primary,
                 foregroundColor: Colors.white,
               ),
               child: _loading
@@ -230,6 +227,7 @@ class _QrLoginTabState extends ConsumerState<_QrLoginTab> {
   String? _key;
   String _hint = '正在生成二维码…';
   Timer? _poll;
+  bool _checking = false; // 防止 _check() 重入
 
   @override
   void initState() {
@@ -258,36 +256,44 @@ class _QrLoginTabState extends ConsumerState<_QrLoginTab> {
     setState(() {
       _key = res.key;
       _qrUrl = res.qrUrl;
-      _hint = '请用网易云音乐 App 扫码';
+      _hint = '请用 App 扫码';
     });
-    _poll = Timer.periodic(const Duration(seconds: 3), (_) => _check());
+    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _check());
   }
 
   Future<void> _check() async {
-    final key = _key;
-    if (key == null) return;
-    final code = await ref.read(userProvider.notifier).pollQr(key);
-    if (!mounted) return;
-    switch (code) {
-      case 800:
-        _poll?.cancel();
-        setState(() => _hint = '二维码已过期，点击刷新');
-        break;
-      case 801:
-        setState(() => _hint = '请用网易云音乐 App 扫码');
-        break;
-      case 802:
-        setState(() => _hint = '已扫描，请在手机上确认');
-        break;
-      case 803:
-        _poll?.cancel();
-        setState(() => _hint = '登录成功');
-        break;
+    if (_checking) return;
+    _checking = true;
+    try {
+      final key = _key;
+      if (key == null) return;
+      final code = await ref.read(userProvider.notifier).pollQr(key);
+      if (!mounted) return;
+      switch (code) {
+        case 800:
+          _poll?.cancel();
+          setState(() => _hint = '二维码已过期，点击刷新');
+          break;
+        case 801:
+          setState(() => _hint = '请用网易云音乐 App 扫码');
+          break;
+        case 802:
+          setState(() => _hint = '已扫描，请在手机上确认');
+          break;
+        case 803:
+          _poll?.cancel();
+          // 导航由 build() 中的 ref.listen(userProvider.status) 统一处理，
+          // pollQr() 在返回 803 前已将状态设为 authenticated，listener 会自动跳转。
+          break;
+      }
+    } finally {
+      _checking = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -308,7 +314,7 @@ class _QrLoginTabState extends ConsumerState<_QrLoginTab> {
             ),
           ),
           const SizedBox(height: 20),
-          Text(_hint, style: const TextStyle(color: AppColors.textSecondary)),
+          Text(_hint, style: TextStyle(color: colors.textSecondary)),
           TextButton(onPressed: _genQr, child: const Text('刷新二维码')),
         ],
       ),

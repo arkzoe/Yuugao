@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 
@@ -37,6 +37,7 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('每日推荐')),
       body: SafeArea(
@@ -46,10 +47,10 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _songs.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Text('暂无推荐（需登录）',
                               style: TextStyle(
-                                  color: AppColors.textSecondary)))
+                                  color: colors.textSecondary)))
                       : Column(
                           children: [
                             _playAllBar(),
@@ -74,6 +75,7 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
   }
 
   Widget _playAllBar() {
+    final colors = ref.watch(currentColorsProvider);
     return InkWell(
       onTap: () => ref
           .read(playerProvider.notifier)
@@ -82,8 +84,8 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            const Icon(Icons.play_circle_fill,
-                color: AppColors.primary, size: 28),
+            Icon(Icons.play_circle_fill,
+                color: colors.primary, size: 28),
             const SizedBox(width: 8),
             Text('播放全部 (${_songs.length})',
                 style: const TextStyle(
