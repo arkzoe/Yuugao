@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/comment_panel.dart';
 import 'package:yuugao/widgets/lyric_panel.dart';
 import 'package:yuugao/widgets/player_controls_row.dart';
@@ -56,6 +56,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
 
     return Scaffold(
@@ -85,9 +86,9 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
                         song?.artist ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.textSecondary,
+                          color: colors.textSecondary,
                         ),
                       ),
                     ],
@@ -119,9 +120,9 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
             // 面板切换 Tab
             TabBar(
               controller: _tab,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
+              indicatorColor: colors.primary,
+              labelColor: colors.primary,
+              unselectedLabelColor: colors.textSecondary,
               labelStyle: const TextStyle(fontSize: 12),
               tabs: const [
                 Tab(text: '信息', height: 40),

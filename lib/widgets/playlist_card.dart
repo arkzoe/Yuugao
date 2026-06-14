@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/api/user/entity/user_playlist_entity.dart';
 import 'package:yuugao/pages/playlist_detail_page.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
 /// 歌单条目：左侧封面 + 右侧歌单名与歌曲数，单列横向布局。
-class PlaylistCard extends StatelessWidget {
+class PlaylistCard extends ConsumerWidget {
   final UserPlaylistPlaylist playlist;
 
   const PlaylistCard({super.key, required this.playlist});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -43,14 +46,12 @@ class PlaylistCard extends StatelessWidget {
                     playlist.name ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, color: AppColors.textPrimary),
+                    style: TextStyle(fontSize: 14, color: colors.textPrimary),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '${playlist.trackCount ?? 0} 首',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(fontSize: 12, color: colors.textSecondary),
                   ),
                 ],
               ),

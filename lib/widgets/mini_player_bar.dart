@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/full_player.dart';
 
@@ -21,6 +21,7 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final state = ref.watch(playerProvider);
     final song = state.current;
 
@@ -33,9 +34,9 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
       onTap: () => showFullPlayer(context),
       child: Container(
         height: 60,
-        decoration: const BoxDecoration(
-          color: AppColors.card,
-          border: Border(top: BorderSide(color: AppColors.divider)),
+        decoration: BoxDecoration(
+          color: colors.card,
+          border: Border(top: BorderSide(color: colors.divider)),
         ),
         child: Row(
           children: [
@@ -50,13 +51,13 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
                   Text(display.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 14, color: AppColors.textPrimary)),
+                      style: TextStyle(
+                          fontSize: 14, color: colors.textPrimary)),
                   Text(display.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                      style: TextStyle(
+                          fontSize: 11, color: colors.textSecondary)),
                 ],
               ),
             ),
@@ -64,12 +65,12 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
               icon: Icon(
                 state.isPlaying ? Icons.pause_circle : Icons.play_circle,
                 size: 36,
-                color: AppColors.primary,
+                color: colors.primary,
               ),
               onPressed: () => ref.read(playerProvider.notifier).toggle(),
             ),
             IconButton(
-              icon: const Icon(Icons.skip_next, color: AppColors.textPrimary),
+              icon: Icon(Icons.skip_next, color: colors.textPrimary),
               onPressed: () => ref.read(playerProvider.notifier).next(),
             ),
           ],

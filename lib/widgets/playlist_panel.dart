@@ -2,19 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 /// 当前播放队列：高亮当前项，点击切歌，右侧删除按钮。
+///
+/// 使用固定高度 ListView.builder 实现虚拟化渲染：
+/// 仅构建屏幕可见的 ~10 行，其余滚动时按需创建/回收。
 class PlaylistPanel extends ConsumerWidget {
   const PlaylistPanel({super.key});
 
+  /// 每行固定高度，Flutter 可跳过布局计算直接定位。
+  static const double _itemHeight = 52.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     final state = ref.watch(playerProvider);
     if (state.queue.isEmpty) {
-      return const Center(
+      return Center(
         child:
-            Text('队列为空', style: TextStyle(color: AppColors.textSecondary)),
+            Text('队列为空', style: TextStyle(color: colors.textSecondary)),
       );
     }
 
@@ -34,46 +41,117 @@ class PlaylistPanel extends ConsumerWidget {
         Expanded(
           child: ListView.builder(
             itemCount: state.queue.length,
+            itemExtent: _itemHeight,
+            // addRepaintBoundaries: true 为每项包裹 RepaintBoundary，
+            // 滚动时仅重绘新进入视口的行，已回收行不重绘。
+            addRepaintBoundaries: true,
             itemBuilder: (context, i) {
               final song = state.queue[i];
               final active = i == state.currentIndex;
-              return ListTile(
-                dense: true,
-                leading: active
-                    ? const Icon(Icons.volume_up,
-                        color: AppColors.primary, size: 18)
-                    : Text('${i + 1}',
-                        style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 13)),
-                title: Text(
-                  song.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color:
-                        active ? AppColors.primary : AppColors.textPrimary,
-                  ),
-                ),
-                subtitle: Text(
-                  song.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close,
-                      size: 18, color: AppColors.textSecondary),
-                  onPressed: () =>
-                      ref.read(playerProvider.notifier).removeAt(i),
-                ),
+              return _PlaylistItem(
+                songName: song.name,
+                artist: song.artist.isEmpty ? '未知歌手' : song.artist,
+                index: i,
+                active: active,
+                colors: colors,
                 onTap: () => ref.read(playerProvider.notifier).playAt(i),
+                onRemove: () =>
+                    ref.read(playerProvider.notifier).removeAt(i),
               );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 单行播放队列项：轻量 Row 替代 ListTile，减少 Widget 层级。
+class _PlaylistItem extends StatelessWidget {
+  final String songName;
+  final String artist;
+  final int index;
+  final bool active;
+  final ThemeColors colors;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _PlaylistItem({
+    required this.songName,
+    required this.artist,
+    required this.index,
+    required this.active,
+    required this.colors,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: PlaylistPanel._itemHeight,
+          child: Row(
+            children: [
+              // 左侧：状态图标 / 序号
+              SizedBox(
+                width: 28,
+                child: active
+                    ? Icon(Icons.volume_up,
+                        color: colors.primary, size: 18)
+                    : Text('${index + 1}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: colors.textSecondary, fontSize: 13)),
+              ),
+              // 中间：歌名 + 歌手
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        songName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: active
+                              ? colors.primary
+                              : colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11, color: colors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 右侧：删除按钮
+              IconButton(
+                icon: Icon(Icons.close,
+                    size: 18, color: colors.textSecondary),
+                onPressed: onRemove,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                    minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

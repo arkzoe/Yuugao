@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 class LyricLine {
   final Duration time;
@@ -104,6 +104,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
     if (song != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadFor(song.id));
@@ -117,9 +118,9 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_lines.isEmpty) {
-      return const Center(
+      return Center(
         child: Text('纯音乐，请欣赏',
-            style: TextStyle(color: AppColors.textSecondary)),
+            style: TextStyle(color: colors.textSecondary)),
       );
     }
 
@@ -138,7 +139,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
             style: TextStyle(
               fontSize: active ? 16 : 14,
               fontWeight: active ? FontWeight.bold : FontWeight.normal,
-              color: active ? AppColors.primary : AppColors.textSecondary,
+              color: active ? colors.primary : colors.textSecondary,
             ),
           ),
         );

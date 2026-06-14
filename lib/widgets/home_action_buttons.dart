@@ -5,7 +5,7 @@ import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/pages/daily_songs_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 /// 首页四个功能入口：每日 / FM / 播客 / 云盘。
 class HomeActionButtons extends ConsumerWidget {
@@ -13,9 +13,10 @@ class HomeActionButtons extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     final items = [
       (
-        _Action(Icons.calendar_month, '每日推荐', AppColors.primary),
+        _Action(Icons.calendar_month, '每日推荐', colors.primary),
         () {
           Navigator.of(
             context,
@@ -40,7 +41,7 @@ class HomeActionButtons extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: items.map((e) {
         final action = e.$1;
-        return _ActionButton(action: action, onTap: e.$2);
+        return _ActionButton(action: action, onTap: e.$2, textColor: colors.textPrimary);
       }).toList(),
     );
   }
@@ -93,7 +94,8 @@ class _Action {
 class _ActionButton extends StatelessWidget {
   final _Action action;
   final VoidCallback onTap;
-  const _ActionButton({required this.action, required this.onTap});
+  final Color textColor;
+  const _ActionButton({required this.action, required this.onTap, required this.textColor});
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +115,7 @@ class _ActionButton extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             action.label,
-            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+            style: TextStyle(fontSize: 12, color: textColor),
           ),
         ],
       ),

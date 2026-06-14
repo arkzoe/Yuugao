@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/song/entity/comment_entity.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
 /// 评论面板：热评置顶 + 最新评论。
@@ -39,6 +39,7 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
     if (song != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadFor(song.id));
@@ -48,8 +49,8 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_hot.isEmpty && _latest.isEmpty) {
-      return const Center(
-        child: Text('暂无评论', style: TextStyle(color: AppColors.textSecondary)),
+      return Center(
+        child: Text('暂无评论', style: TextStyle(color: colors.textSecondary)),
       );
     }
 
@@ -68,22 +69,26 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
     );
   }
 
-  Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-        child: Text(text,
-            style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-                fontSize: 13)),
-      );
+  Widget _sectionTitle(String text) {
+    final colors = ref.watch(currentColorsProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Text(text,
+          style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: colors.textSecondary,
+              fontSize: 13)),
+    );
+  }
 }
 
-class _CommentRow extends StatelessWidget {
+class _CommentRow extends ConsumerWidget {
   final CommentItem comment;
   const _CommentRow({required this.comment});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -102,31 +107,31 @@ class _CommentRow extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(comment.user?.nickname ?? '',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary)),
+                              color: colors.textSecondary)),
                     ),
                     Row(
                       children: [
-                        const Icon(Icons.thumb_up_alt_outlined,
-                            size: 12, color: AppColors.textSecondary),
+                        Icon(Icons.thumb_up_alt_outlined,
+                            size: 12, color: colors.textSecondary),
                         const SizedBox(width: 3),
                         Text('${comment.likedCount ?? 0}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 11,
-                                color: AppColors.textSecondary)),
+                                color: colors.textSecondary)),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(comment.content ?? '',
-                    style: const TextStyle(
-                        fontSize: 14, color: AppColors.textPrimary)),
+                    style: TextStyle(
+                        fontSize: 14, color: colors.textPrimary)),
                 const SizedBox(height: 4),
                 Text(comment.timeStr ?? '',
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary)),
+                    style: TextStyle(
+                        fontSize: 10, color: colors.textSecondary)),
               ],
             ),
           ),

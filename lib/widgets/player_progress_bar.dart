@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 /// 进度条 + 当前/总时长。拖动时本地预览，松手后 seek。
 class PlayerProgressBar extends ConsumerStatefulWidget {
@@ -23,6 +23,7 @@ class _PlayerProgressBarState extends ConsumerState<PlayerProgressBar> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final state = ref.watch(playerProvider);
     final total = state.duration.inMilliseconds.toDouble();
     final pos = state.position.inMilliseconds
@@ -58,11 +59,11 @@ class _PlayerProgressBarState extends ConsumerState<PlayerProgressBar> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(_fmt(Duration(milliseconds: value.toInt())),
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary)),
+                  style: TextStyle(
+                      fontSize: 11, color: colors.textSecondary)),
               Text(_fmt(state.duration),
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary)),
+                  style: TextStyle(
+                      fontSize: 11, color: colors.textSecondary)),
             ],
           ),
         ),

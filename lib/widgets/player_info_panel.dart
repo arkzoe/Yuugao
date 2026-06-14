@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/cache_provider.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
 /// 歌曲信息面板：封面 / 歌名 / 歌手（均居中，溢出省略）。
@@ -12,6 +12,7 @@ class PlayerInfoPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
     if (song == null) return const SizedBox.shrink();
     ref.watch(cacheProvider);
@@ -37,8 +38,8 @@ class PlayerInfoPanel extends ConsumerWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: colors.textSecondary,
               fontSize: 14,
             ),
           ),

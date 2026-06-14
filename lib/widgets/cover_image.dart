@@ -1,10 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 /// 统一封面图：圆角 + 占位 + 错误兜底。
-class CoverImage extends StatelessWidget {
+class CoverImage extends ConsumerWidget {
   final String url;
   final double size;
   final double radius;
@@ -17,7 +18,9 @@ class CoverImage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
+
     // 网易云封面常返回 http 链接，Android 默认禁止明文流量会导致图片加载失败，
     // 统一升级为 https。
     final safeUrl = url.startsWith('http://')
@@ -26,7 +29,7 @@ class CoverImage extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: !safeUrl.startsWith('http')
-          ? _placeholder()
+          ? _placeholder(colors)
           : CachedNetworkImage(
               imageUrl: safeUrl,
               // 网易云图片 CDN 校验来源，缺少 Referer / UA 会返回 403，
@@ -40,21 +43,20 @@ class CoverImage extends StatelessWidget {
               width: size,
               height: size,
               fit: BoxFit.cover,
-              placeholder: (_, _) => _placeholder(),
-              errorWidget: (_, _, _) => _placeholder(),
+              placeholder: (_, _) => _placeholder(colors),
+              errorWidget: (_, _, _) => _placeholder(colors),
             ),
     );
   }
 
-  Widget _placeholder() {
+  Widget _placeholder(ThemeColors colors) {
     final box = size.isFinite ? size : null;
     final iconSize = size.isFinite ? size * 0.5 : 24.0;
     return Container(
       width: box,
       height: box,
-      color: AppColors.card,
-      child: Icon(Icons.music_note,
-          color: AppColors.textSecondary, size: iconSize),
+      color: colors.card,
+      child: Icon(Icons.music_note, color: colors.textSecondary, size: iconSize),
     );
   }
 }

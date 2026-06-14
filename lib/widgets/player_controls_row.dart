@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 
 /// 控制行：喜欢 / 上一首 / 播放暂停 / 下一首 / 播放模式。
 class PlayerControlsRow extends ConsumerWidget {
@@ -22,6 +22,7 @@ class PlayerControlsRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     final state = ref.watch(playerProvider);
     final song = state.current;
     final liked = song != null &&
@@ -35,7 +36,7 @@ class PlayerControlsRow extends ConsumerWidget {
         children: [
           IconButton(
             icon: Icon(liked ? Icons.favorite : Icons.favorite_border,
-                color: liked ? AppColors.primary : AppColors.textPrimary),
+                color: liked ? colors.primary : colors.textPrimary),
             onPressed: song == null
                 ? null
                 : () =>
@@ -47,8 +48,8 @@ class PlayerControlsRow extends ConsumerWidget {
             onPressed: () => ref.read(playerProvider.notifier).prev(),
           ),
           Container(
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: colors.primary,
               shape: BoxShape.circle,
             ),
             child: IconButton(
@@ -66,7 +67,7 @@ class PlayerControlsRow extends ConsumerWidget {
             onPressed: () => ref.read(playerProvider.notifier).next(),
           ),
           IconButton(
-            icon: Icon(_modeIcon(state.mode), color: AppColors.textPrimary),
+            icon: Icon(_modeIcon(state.mode), color: colors.textPrimary),
             onPressed: () => ref.read(playerProvider.notifier).cycleMode(),
           ),
         ],

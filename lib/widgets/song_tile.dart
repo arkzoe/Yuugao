@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/pages/song_comments_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
-import 'package:yuugao/theme.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
 /// 歌曲列表项：序号 + 封面 + 歌名/歌手 + VIP + 更多菜单。
@@ -28,9 +28,10 @@ class SongTile extends ConsumerWidget {
   });
 
   void _showMenu(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -45,40 +46,40 @@ class SongTile extends ConsumerWidget {
                 Text(song.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
+                        color: colors.textPrimary)),
                 const SizedBox(height: 4),
                 Text(
                     song.artist.isEmpty ? '未知歌手' : song.artist,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.textSecondary)),
+                    style: TextStyle(
+                        fontSize: 13, color: colors.textSecondary)),
                 const SizedBox(height: 12),
-                const Divider(color: AppColors.divider),
+                Divider(color: colors.divider),
                 // 下一首播放
                 ListTile(
                   leading:
-                      const Icon(Icons.skip_next, color: AppColors.textPrimary),
-                  title: const Text('下一首播放',
-                      style: TextStyle(color: AppColors.textPrimary)),
+                      Icon(Icons.skip_next, color: colors.textPrimary),
+                  title: Text('下一首播放',
+                      style: TextStyle(color: colors.textPrimary)),
                   onTap: () {
                     ref.read(playerProvider.notifier).insertNext(song);
                     Navigator.of(ctx).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('「${song.name}」将在当前歌曲后播放'),
-                        backgroundColor: AppColors.card,
+                        backgroundColor: colors.card,
                       ),
                     );
                   },
                 ),
                 // 查看评论
                 ListTile(
-                  leading: const Icon(Icons.comment_outlined,
-                      color: AppColors.textPrimary),
-                  title: const Text('查看评论',
-                      style: TextStyle(color: AppColors.textPrimary)),
+                  leading: Icon(Icons.comment_outlined,
+                      color: colors.textPrimary),
+                  title: Text('查看评论',
+                      style: TextStyle(color: colors.textPrimary)),
                   onTap: () {
                     Navigator.of(ctx).pop();
                     Navigator.of(context).push(
@@ -98,6 +99,7 @@ class SongTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(currentColorsProvider);
     final current = ref.watch(
       playerProvider.select((s) => s.current?.id == song.id),
     );
@@ -114,8 +116,8 @@ class SongTile extends ConsumerWidget {
                 child: Text(
                   '$label',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary),
+                  style: TextStyle(
+                      fontSize: 12, color: colors.textSecondary),
                 ),
               ),
               const SizedBox(width: 4),
@@ -138,8 +140,8 @@ class SongTile extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 15,
                             color: current
-                                ? AppColors.primary
-                                : AppColors.textPrimary,
+                                ? colors.primary
+                                : colors.textPrimary,
                           ),
                         ),
                       ),
@@ -151,14 +153,14 @@ class SongTile extends ConsumerWidget {
                               horizontal: 3, vertical: 1),
                           decoration: BoxDecoration(
                             border: Border.all(
-                                color: AppColors.primary, width: 0.7),
+                                color: colors.primary, width: 0.7),
                             borderRadius: BorderRadius.circular(3),
                           ),
-                          child: const Text(
+                          child: Text(
                             'VIP',
                             style: TextStyle(
                               fontSize: 9,
-                              color: AppColors.primary,
+                              color: colors.primary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -171,15 +173,15 @@ class SongTile extends ConsumerWidget {
                     song.artist.isEmpty ? '未知歌手' : song.artist,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(
+                        fontSize: 12, color: colors.textSecondary),
                   ),
                 ],
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.more_vert,
-                  color: AppColors.textSecondary, size: 20),
+              icon: Icon(Icons.more_vert,
+                  color: colors.textSecondary, size: 20),
               onPressed: () => _showMenu(context, ref),
             ),
           ],
