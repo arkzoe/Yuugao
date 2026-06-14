@@ -37,6 +37,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   String _creator = '';
   bool _initialLoading = true;
   bool _loadingMore = false;
+  bool _bulkLoading = false; // 批量补齐全量歌曲中，禁止滚动分页
   int _totalCount = 0;
   bool _exhausted = false;
 
@@ -76,19 +77,19 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   /// 滚动到底部时自动加载下一页。
   void _onScroll() {
-    if (_exhausted || _loadingMore || _initialLoading) return;
+    if (_exhausted || _loadingMore || _initialLoading || _bulkLoading) return;
     if (_scrollCtrl.position.pixels >=
         _scrollCtrl.position.maxScrollExtent - 300) {
       _loadNextPage();
     }
   }
 
-  /// 首屏：playlistDetail 拉取前 [_pageSize] 首 + 全量 trackIds。
+  /// 首屏：playlistDetail 拉取全量歌曲（n=1000），避免播放队列只含部分歌曲。
   Future<void> _loadFirstPage() async {
     try {
       final res = await BujuanMusicManager().playlistDetail(
         id: widget.playlistId,
-        n: _pageSize,
+        n: 1000,
       );
       final pl = res?.playlist;
       if (pl == null) {
@@ -99,7 +100,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       _creator = pl.creator?.nickname ?? '';
       _totalCount = pl.trackCount ?? 0;
 
-      // 全量 ID（用于后续分页；playlistDetail 始终返回全量 trackIds）
+      // trackIds 为全量 ID（playlistDetail 始终返回全量）
       _allTrackIds = [
         for (final ti in (pl.trackIds ?? []))
           if (ti.id != null && ti.id! > 0) ti.id!,
@@ -119,7 +120,48 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
       _exhausted = _songs.length >= _totalCount;
     } catch (_) {}
-    if (mounted) setState(() => _initialLoading = false);
+
+    if (mounted) {
+      setState(() => _initialLoading = false);
+      // 首屏 tracks 可能被 API 截断（即使 n=1000），用 trackIds 补齐剩余歌曲
+      if (_allTrackIds.length > _songs.length) {
+        _loadAllRemaining();
+      }
+    }
+  }
+
+  /// 后台补齐 [_allTrackIds] 中尚未加载的所有歌曲，确保搜索覆盖全量。
+  Future<void> _loadAllRemaining() async {
+    _bulkLoading = true;
+    var offset = _songs.length;
+    while (offset < _allTrackIds.length) {
+      final batchIds = _allTrackIds
+          .skip(offset)
+          .take(_pageSize)
+          .where((id) => !_loadedIds.contains(id))
+          .toList();
+      if (batchIds.isEmpty) {
+        offset += _pageSize;
+        continue;
+      }
+      try {
+        final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+        final batch = [
+          for (final s in (detail?.songs ?? []))
+            if (s.id > 0) Song.fromSongDetail(s),
+        ];
+        if (batch.isEmpty) break;
+        _loadedIds.addAll(batch.map((s) => s.id));
+        _songs.addAll(batch);
+        if (mounted) setState(() {}); // 增量刷新列表
+      } catch (_) {
+        break; // 网络异常则停止，保留已加载部分
+      }
+      offset += _pageSize;
+    }
+    _exhausted = _songs.length >= _totalCount;
+    _bulkLoading = false;
+    if (mounted) setState(() {});
   }
 
   /// 下一页：通过 songDetail 按 trackIds 批量拉取详情。
