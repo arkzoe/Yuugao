@@ -50,6 +50,7 @@ dependencies:
   qr_flutter: ^4.1.0
   shared_preferences: ^2.2.2
   meta: ^1.18.0
+  palette_generator_master: ^1.1.0
 
 dev_dependencies:
   flutter_test:
