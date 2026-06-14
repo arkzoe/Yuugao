@@ -157,12 +157,11 @@ class AudioService {
 
   /// 用队列替换并从 [initialIndex] 开始播放。
   ///
-  /// **单曲先行策略**：先解析目标歌曲直链 → 立即起播（仅 1 次 HTTP），
-  /// 然后解析相邻窗口 → 塞入队列前后，最后后台扩展剩余歌曲。
-  /// 无论歌曲在歌单哪个位置，起播延迟恒定为 1 次 songUrl 请求。
+  /// **单曲先行策略**：仅解析目标歌曲直链 → 立即起播并返回（仅 1 次 HTTP），
+  /// 后台异步补充相邻窗口和剩余歌曲。无论歌单位置，起播延迟恒定为 1 次请求。
   ///
   /// 传入 [fetchMore] 回调后，当本地候选列表耗尽时自动分页拉取后续歌曲，
-  /// 配合滑动窗口实现内存友好的超长歌单播放。
+  /// 配合滑动窗口实现超长歌单的内存友好播放。
   /// [totalCount] 为歌单总歌曲数，用于判断是否还有更多页。
   Future<void> setQueue(
     List<Song> candidates, {
@@ -191,7 +190,7 @@ class AudioService {
     final startIdx = initialIndex.clamp(0, candidates.length - 1);
     final target = candidates[startIdx];
 
-    // ── 第 1 步：仅解析目标歌曲，立即起播（1 次 HTTP） ──
+    // ── 第 1 步：仅解析目标歌曲，立即起播（1 次 HTTP）──
     await _batchResolve([target]);
     if (gen != _generation) return;
 
@@ -216,47 +215,16 @@ class AudioService {
     }
     _queueController.add(List.unmodifiable(_queue));
 
-    // ── 第 2 步：解析窗口邻居，塞入目标歌曲前后 ──
-    final winStart = (startIdx - _resolveWindow).clamp(0, candidates.length);
-    final winEnd =
-        (startIdx + _resolveWindow + 1).clamp(0, candidates.length);
-    final window = candidates.sublist(winStart, winEnd);
-
-    // 邻居 = 窗口中除目标外的歌曲
-    final targetInWindow = startIdx - winStart;
-    final beforeTarget = window.sublist(0, targetInWindow);
-    final afterTarget = window.sublist(targetInWindow + 1);
-    final neighbors = [...beforeTarget, ...afterTarget];
-
-    if (neighbors.isNotEmpty) {
-      await _batchResolve(neighbors);
-      if (gen != _generation) return;
-
-      // 前邻居：倒序插入队首（每次 insert(0) 后后续插入位置自然正确）
-      for (final s in beforeTarget.reversed) {
-        final src = _buildSource(s);
-        if (src != null) {
-          _queue.insert(0, s);
-          await _guard(() => player.insertAudioSource(0, src));
-        }
-      }
-
-      // 后邻居：追加到队尾
-      for (final s in afterTarget) {
-        final src = _buildSource(s);
-        if (src != null) {
-          _queue.add(s);
-          await _guard(() => player.addAudioSource(src));
-        }
-      }
-
-      _queueController.add(List.unmodifiable(_queue));
+    // ── 第 2 步：后台补充全部剩余歌曲（不阻塞返回）──
+    // 合并原「窗口邻居」+「后台扩展」为单次 fire-and-forget 调用，
+    // 从 targetIndex+1 开始逐步解析并追加到队列，使 setQueue 零等待返回。
+    final backgroundFrom = (startIdx + 1).clamp(0, candidates.length);
+    if (backgroundFrom < candidates.length) {
+      _expandForward(gen, candidates, backgroundFrom, candidates.length);
     }
-
-    // ── 第 3 步：后台扩展窗口之后的剩余歌曲 ──
-    // 窗口之前的歌最多 20 首（窗口半径），用户可从歌单详情页重新点击。
-    if (winEnd < candidates.length) {
-      _expandForward(gen, candidates, winEnd, candidates.length);
+    // 同样处理目标歌曲之前的邻居（倒序插入队首）
+    if (startIdx > 0) {
+      _expandBackward(gen, candidates, startIdx);
     }
   }
 
@@ -568,6 +536,55 @@ class AudioService {
       await _trimQueue();
 
       _queueController.add(List.unmodifiable(_queue));
+    }
+  }
+
+  /// 后台将目标歌曲之前的邻居逆序插入队首。
+  ///
+  /// 与 [_expandForward] 对称，逐批解析 URL 后倒序插入队列前面。
+  Future<void> _expandBackward(int setGen, List<Song> candidates, int beforeIdx) async {
+    final gen = _expandGen;
+    const chunkSize = 30;
+    var offset = 0;
+
+    while (offset < beforeIdx) {
+      if (_generation != setGen || _expandGen != gen) return;
+
+      final batchEnd = (offset + chunkSize).clamp(0, beforeIdx);
+      final batchSongs = candidates.sublist(offset, batchEnd);
+      if (batchSongs.isEmpty) break;
+
+      // 过滤已解析的歌曲
+      final toResolve = batchSongs.where((s) => !_resolvedUrls.containsKey(s.id)).toList();
+      if (toResolve.isNotEmpty) {
+        final ids = toResolve.map((s) => s.id.toString()).toList();
+        final res = await BujuanMusicManager().songUrl(ids: ids, level: _effectiveLevel);
+        final data = res?.data ?? [];
+        final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        for (final d in data) {
+          if (d.id != null && d.url != null && d.url!.isNotEmpty) {
+            final type = (d.type ?? 'mp3').toLowerCase();
+            _resolvedUrls[d.id!] = d.url!;
+            _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
+            _resolvedExpiry[d.id!] = nowSec + (d.expi ?? 1200);
+          }
+        }
+      }
+
+      if (_generation != setGen || _expandGen != gen) return;
+
+      // 倒序插入队首（从 batchEnd-1 到 offset）
+      for (var i = batchEnd - 1; i >= offset; i--) {
+        final s = candidates[i];
+        final src = _buildSource(s);
+        if (src != null && !_queue.contains(s)) {
+          _queue.insert(0, s);
+          await _guard(() => player.insertAudioSource(0, src));
+        }
+      }
+      _queueController.add(List.unmodifiable(_queue));
+
+      offset = batchEnd;
     }
   }
 
