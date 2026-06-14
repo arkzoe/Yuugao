@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:yuugao/services/audio_service.dart';
 
 /// 主题感知色板 — 替代硬编码 AppColors，在深浅切换时自动更新。
 class ThemeColors {
@@ -49,19 +53,27 @@ const _themePrefsKey = 'theme_mode';
 
 class SettingsState {
   final ThemeMode themeMode;
+  /// 睡眠定时器结束时刻（Unix 毫秒）；null 表示未启用
+  final int? sleepTimerEndMs;
 
-  const SettingsState({this.themeMode = ThemeMode.light});
+  const SettingsState({this.themeMode = ThemeMode.light, this.sleepTimerEndMs});
 
-  SettingsState copyWith({ThemeMode? themeMode}) {
-    return SettingsState(themeMode: themeMode ?? this.themeMode);
+  SettingsState copyWith({ThemeMode? themeMode, int? sleepTimerEndMs}) {
+    return SettingsState(
+      themeMode: themeMode ?? this.themeMode,
+      sleepTimerEndMs: sleepTimerEndMs ?? this.sleepTimerEndMs,
+    );
   }
 }
 
 class SettingsNotifier extends Notifier<SettingsState> {
+  Timer? _sleepTimer;
+
   @override
   SettingsState build() {
     // 异步加载持久化的主题设置，初始默认浅色
     _loadPersistedTheme();
+    _restoreSleepTimer();
     return const SettingsState();
   }
 
@@ -72,6 +84,21 @@ class SettingsNotifier extends Notifier<SettingsState> {
       final mode = stored == 'dark' ? ThemeMode.dark : ThemeMode.light;
       state = state.copyWith(themeMode: mode);
     }
+  }
+
+  /// 恢复持久化的睡眠定时器（跨进程重启）
+  Future<void> _restoreSleepTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final endMs = prefs.getInt(_sleepTimerKey);
+    if (endMs == null) return;
+    final remaining = DateTime.now().millisecondsSinceEpoch - endMs;
+    if (remaining >= 0) {
+      // 已过期，清理
+      await prefs.remove(_sleepTimerKey);
+      return;
+    }
+    state = state.copyWith(sleepTimerEndMs: endMs);
+    _startSleepCheck();
   }
 
   Future<void> toggleTheme() async {
@@ -85,6 +112,46 @@ class SettingsNotifier extends Notifier<SettingsState> {
       _themePrefsKey,
       next == ThemeMode.dark ? 'dark' : 'light',
     );
+  }
+
+  // ═══ 睡眠定时器 ═══
+
+  static const _sleepTimerKey = 'sleep_timer_end_ms';
+
+  /// 启动睡眠定时器，[minutes] 分钟后暂停播放。
+  Future<void> startSleepTimer(int minutes) async {
+    cancelSleepTimer();
+    final endMs = DateTime.now().millisecondsSinceEpoch + minutes * 60 * 1000;
+    state = state.copyWith(sleepTimerEndMs: endMs);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_sleepTimerKey, endMs);
+    _startSleepCheck();
+  }
+
+  /// 取消睡眠定时器。
+  Future<void> cancelSleepTimer() async {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    state = state.copyWith(sleepTimerEndMs: null);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sleepTimerKey);
+  }
+
+  /// 启动定时检查（每 30 秒），到期后暂停播放。
+  void _startSleepCheck() {
+    _sleepTimer?.cancel();
+    _sleepTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final endMs = state.sleepTimerEndMs;
+      if (endMs == null) {
+        _sleepTimer?.cancel();
+        _sleepTimer = null;
+        return;
+      }
+      if (DateTime.now().millisecondsSinceEpoch >= endMs) {
+        AudioService.instance.player.pause();
+        cancelSleepTimer();
+      }
+    });
   }
 }
 
