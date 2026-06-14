@@ -31,6 +31,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _openDrawer() {
     if (!_isDrawerOpen) setState(() => _isDrawerOpen = true);
   }
+
   void _closeDrawer() {
     if (_isDrawerOpen) setState(() => _isDrawerOpen = false);
   }
@@ -82,10 +83,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             child: Text(
-                              '${_greeting()}，${user.nickname}',
-                              style: const TextStyle(
+                              '${_greeting()}，${user.nickname}~',
+                              style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
+                                color: colors.textSecondary,
                               ),
                             ),
                           ),
@@ -115,6 +117,19 @@ class _HomePageState extends ConsumerState<HomePage> {
             width: 20,
             child: _EdgeDragDetector(onDragOpen: _openDrawer),
           ),
+
+        // ── 第 4 层：点击主页区域关闭（仅覆盖抽屉右侧，不与抽屉按钮重叠）──
+        if (_isDrawerOpen)
+          Positioned(
+            left: homeDrawerWidth,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            child: GestureDetector(
+              onTap: _closeDrawer,
+              behavior: HitTestBehavior.opaque,
+            ),
+          ),
       ],
     );
   }
@@ -134,9 +149,9 @@ class _HomePageState extends ConsumerState<HomePage> {
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SearchPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SearchPage()));
             },
           ),
         ],
@@ -154,29 +169,49 @@ class _HomePageState extends ConsumerState<HomePage> {
         ),
       );
     }
+
+    final liked = all.first;
+    final rest = all.sublist(1); // 剩余歌单（空列表时不会触发，all 非空已在外层保证）
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Icon(Icons.queue_music, color: colors.primary, size: 18),
-              const SizedBox(width: 6),
-              Text(
-                '我的歌单',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ],
+        // ── 我喜欢的音乐 ──
+        _sectionHeader(Icons.favorite, '我喜欢的音乐', colors),
+        PlaylistCard(playlist: liked),
+
+        if (rest.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          // ── 我的歌单 ──
+          _sectionHeader(Icons.queue_music, '我的歌单', colors),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: rest.length,
+            itemBuilder: (context, i) => PlaylistCard(playlist: rest[i]),
           ),
-        ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: all.length,
-          itemBuilder: (context, i) => PlaylistCard(playlist: all[i]),
-        ),
+        ],
       ],
+    );
+  }
+
+  Widget _sectionHeader(IconData icon, String title, ThemeColors colors) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Icon(icon, color: colors.primary, size: 18),
+          const SizedBox(width: 6),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: colors.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

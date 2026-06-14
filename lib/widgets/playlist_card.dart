@@ -34,7 +34,7 @@ class PlaylistCard extends ConsumerWidget {
             CoverImage(
               url: '${playlist.coverImgUrl ?? ''}?param=150y150',
               size: 56,
-              radius: 8,
+              radius: 28,
             ),
             const SizedBox(width: 12),
             Expanded(

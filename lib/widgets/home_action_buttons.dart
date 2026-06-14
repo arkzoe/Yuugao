@@ -15,7 +15,7 @@ class HomeActionButtons extends ConsumerWidget {
     final colors = ref.watch(currentColorsProvider);
     final items = [
       (
-        _Action(Icons.calendar_month, '每日推荐', colors.primary),
+        _Action(Icons.calendar_month, '每日', Colors.grey),
         () {
           Navigator.of(
             context,
@@ -23,15 +23,15 @@ class HomeActionButtons extends ConsumerWidget {
         },
       ),
       (
-        _Action(Icons.radio, '私人FM', Colors.orange),
+        _Action(Icons.radio, 'FM', Colors.grey),
         () => _startFmAndShowPlayer(context, ref),
       ),
       (
-        _Action(Icons.sensors, '播客', Colors.lightBlue),
+        _Action(Icons.sensors, '播客', Colors.grey),
         () => _todo(context, '播客'),
       ),
       (
-        _Action(Icons.cloud, '云盘', Colors.tealAccent),
+        _Action(Icons.cloud_queue, '云盘', Colors.grey),
         () => _todo(context, '云盘'),
       ),
     ];
@@ -40,21 +40,27 @@ class HomeActionButtons extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: items.map((e) {
         final action = e.$1;
-        return _ActionButton(action: action, onTap: e.$2, textColor: colors.textPrimary);
+        return _ActionButton(
+          action: action,
+          onTap: e.$2,
+          textColor: colors.textPrimary,
+        );
       }).toList(),
     );
   }
 
   Future<void> _startFmAndShowPlayer(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final ok = await ref.read(playerProvider.notifier).startFm();
     if (!context.mounted) return;
     if (ok) {
       showFullPlayer(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('FM 启动失败，请稍后重试')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('FM 启动失败，请稍后重试')));
     }
   }
 
@@ -76,7 +82,11 @@ class _ActionButton extends StatelessWidget {
   final _Action action;
   final VoidCallback onTap;
   final Color textColor;
-  const _ActionButton({required this.action, required this.onTap, required this.textColor});
+  const _ActionButton({
+    required this.action,
+    required this.onTap,
+    required this.textColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -84,20 +94,9 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       child: Column(
         children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: action.color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(action.icon, color: action.color, size: 26),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            action.label,
-            style: TextStyle(fontSize: 12, color: textColor),
-          ),
+          Icon(action.icon, color: action.color, size: 26),
+          const SizedBox(height: 4),
+          Text(action.label, style: TextStyle(fontSize: 12, color: textColor)),
         ],
       ),
     );
