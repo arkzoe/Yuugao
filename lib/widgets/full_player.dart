@@ -40,17 +40,33 @@ class FullPlayer extends ConsumerStatefulWidget {
 
 class _FullPlayerState extends ConsumerState<FullPlayer>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab;
+  TabController? _tab;
+  bool _wasFm = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _tab = TabController(length: 4, vsync: this);
+  static const _fmTabs = [
+    Tab(text: '信息', height: 40),
+    Tab(text: '歌词', height: 40),
+    Tab(text: '评论', height: 40),
+  ];
+
+  static const _normalTabs = [
+    Tab(text: '信息', height: 40),
+    Tab(text: '列表', height: 40),
+    Tab(text: '歌词', height: 40),
+    Tab(text: '评论', height: 40),
+  ];
+
+  TabController _createTab(bool isFm) {
+    _tab?.dispose();
+    final count = isFm ? 3 : 4;
+    final ctrl = TabController(length: count, vsync: this);
+    _tab = ctrl;
+    return ctrl;
   }
 
   @override
   void dispose() {
-    _tab.dispose();
+    _tab?.dispose();
     super.dispose();
   }
 
@@ -58,18 +74,55 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
+    final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
+
+    // FM 模式变化时重建 TabController
+    if (_tab == null || _wasFm != isFm) {
+      _wasFm = isFm;
+      _createTab(isFm);
+    }
+
+    final tab = _tab!;
+
+    // FM 模式下列表面板替换为空白占位
+    final panels = isFm
+        ? const <Widget>[PlayerInfoPanel(), LyricPanel(), CommentPanel()]
+        : const <Widget>[
+            PlayerInfoPanel(),
+            PlaylistPanel(),
+            LyricPanel(),
+            CommentPanel(),
+          ];
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // 顶栏：折叠 + 分享
+            // 顶栏：FM 标识 + 折叠 + 分享
             Row(
               children: [
                 IconButton(
                   icon: const Icon(Icons.keyboard_arrow_down),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
+                if (isFm)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '私人 FM',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                if (isFm) const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     children: [
@@ -98,38 +151,29 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
                   icon: const Icon(Icons.share),
                   onPressed: song == null
                       ? null
-                      : () => SharePlus.instance.share(ShareParams(text: '我在听「${song.name}」- ${song.artist}')),
+                      : () => SharePlus.instance.share(ShareParams(
+                          text: '我在听「${song.name}」- ${song.artist}')),
                 ),
               ],
             ),
-            // 四个面板
+            // 面板内容
             Expanded(
               child: TabBarView(
-                controller: _tab,
-                children: const [
-                  PlayerInfoPanel(),
-                  PlaylistPanel(),
-                  LyricPanel(),
-                  CommentPanel(),
-                ],
+                controller: tab,
+                children: panels,
               ),
             ),
             // 进度 + 控制
             const PlayerProgressBar(),
             const PlayerControlsRow(),
-            // 面板切换 Tab
+            // 底部 Tab 切换
             TabBar(
-              controller: _tab,
+              controller: tab,
               indicatorColor: colors.primary,
               labelColor: colors.primary,
               unselectedLabelColor: colors.textSecondary,
               labelStyle: const TextStyle(fontSize: 12),
-              tabs: const [
-                Tab(text: '信息', height: 40),
-                Tab(text: '列表', height: 40),
-                Tab(text: '歌词', height: 40),
-                Tab(text: '评论', height: 40),
-              ],
+              tabs: isFm ? _fmTabs : _normalTabs,
             ),
             const SizedBox(height: 8),
           ],

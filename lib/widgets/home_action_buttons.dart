@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:yuugao/CloudMusic/yuugao.dart';
-import 'package:yuugao/models/song.dart';
 import 'package:yuugao/pages/daily_songs_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
+import 'package:yuugao/widgets/full_player.dart';
 
 /// 首页四个功能入口：每日 / FM / 播客 / 云盘。
 class HomeActionButtons extends ConsumerWidget {
@@ -25,7 +24,7 @@ class HomeActionButtons extends ConsumerWidget {
       ),
       (
         _Action(Icons.radio, '私人FM', Colors.orange),
-        () => _startFm(context, ref),
+        () => _startFmAndShowPlayer(context, ref),
       ),
       (
         _Action(Icons.sensors, '播客', Colors.lightBlue),
@@ -46,35 +45,17 @@ class HomeActionButtons extends ConsumerWidget {
     );
   }
 
-  Future<void> _startFm(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    // FM 无独立 API：复用推荐新歌作为随机流
-    final res = await BujuanMusicManager().recommendNewSong(limit: 20);
-    final songs = (res?.result ?? [])
-        .map((r) {
-          final s = r.song;
-          if (s == null) return null;
-          return Song(
-            id: s.id ?? 0,
-            name: s.name ?? '',
-            artist: (s.artists ?? [])
-                .map((a) => a.name ?? '')
-                .where((n) => n.isNotEmpty)
-                .join(' / '),
-            album: s.album?.name ?? '',
-            coverUrl: s.album?.picUrl ?? '',
-            durationMs: s.duration ?? 0,
-          );
-        })
-        .whereType<Song>()
-        .where((s) => s.id > 0)
-        .toList();
-    if (songs.isEmpty) {
-      messenger.showSnackBar(const SnackBar(content: Text('FM 暂无可用歌曲')));
-      return;
+  Future<void> _startFmAndShowPlayer(
+      BuildContext context, WidgetRef ref) async {
+    final ok = await ref.read(playerProvider.notifier).startFm();
+    if (!context.mounted) return;
+    if (ok) {
+      showFullPlayer(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('FM 启动失败，请稍后重试')),
+      );
     }
-    await ref.read(playerProvider.notifier).play(songs.first, queue: songs);
-    await ref.read(playerProvider.notifier).setMode(PlayMode.shuffle);
   }
 
   void _todo(BuildContext context, String name) {

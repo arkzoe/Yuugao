@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/services/audio_service.dart';
 
@@ -17,6 +20,7 @@ class PlayerState {
   final Duration position;
   final Duration duration;
   final bool buffering;
+  final bool isFmMode;
 
   const PlayerState({
     this.queue = const [],
@@ -26,6 +30,7 @@ class PlayerState {
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.buffering = false,
+    this.isFmMode = false,
   });
 
   Song? get current =>
@@ -49,6 +54,7 @@ class PlayerState {
     Duration? position,
     Duration? duration,
     bool? buffering,
+    bool? isFmMode,
   }) {
     return PlayerState(
       queue: queue ?? this.queue,
@@ -58,6 +64,7 @@ class PlayerState {
       position: position ?? this.position,
       duration: duration ?? this.duration,
       buffering: buffering ?? this.buffering,
+      isFmMode: isFmMode ?? this.isFmMode,
     );
   }
 }
@@ -211,6 +218,39 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<void> cycleMode() {
     final next = PlayMode.values[(state.mode.index + 1) % PlayMode.values.length];
     return setMode(next);
+  }
+
+  // ═══ 私人 FM ═══
+
+  /// 启动私人 FM 模式。
+  Future<bool> startFm() async {
+    final ok = await _audio.startFm();
+    if (ok) {
+      state = state.copyWith(
+        isFmMode: true,
+        queue: _audio.queue,
+        currentIndex: 0,
+      );
+    }
+    return ok;
+  }
+
+  /// FM 切到下一首。
+  Future<void> nextFm() async {
+    await _audio.nextFm();
+    state = state.copyWith(
+      queue: _audio.queue,
+      currentIndex: 0,
+    );
+  }
+
+  /// FM 垃圾桶（跳过 + 标记不喜欢）。
+  Future<void> trashFm() async {
+    await _audio.trashFm();
+    state = state.copyWith(
+      queue: _audio.queue,
+      currentIndex: 0,
+    );
   }
 }
 

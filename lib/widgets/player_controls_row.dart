@@ -45,7 +45,9 @@ class PlayerControlsRow extends ConsumerWidget {
           IconButton(
             iconSize: 36,
             icon: const Icon(Icons.skip_previous),
-            onPressed: () => ref.read(playerProvider.notifier).prev(),
+            onPressed: state.isFmMode
+                ? null // FM 无上一首
+                : () => ref.read(playerProvider.notifier).prev(),
           ),
           Container(
             decoration: BoxDecoration(
@@ -66,10 +68,21 @@ class PlayerControlsRow extends ConsumerWidget {
             icon: const Icon(Icons.skip_next),
             onPressed: () => ref.read(playerProvider.notifier).next(),
           ),
-          IconButton(
-            icon: Icon(_modeIcon(state.mode), color: colors.textPrimary),
-            onPressed: () => ref.read(playerProvider.notifier).cycleMode(),
-          ),
+          // FM 模式：垃圾桶；普通模式：播放模式切换
+          if (state.isFmMode)
+            IconButton(
+              iconSize: 28,
+              icon: const Icon(Icons.thumb_down_alt_outlined),
+              color: colors.textSecondary,
+              onPressed:
+                  () => ref.read(playerProvider.notifier).trashFm(),
+            )
+          else
+            IconButton(
+              icon: Icon(_modeIcon(state.mode), color: colors.textPrimary),
+              onPressed:
+                  () => ref.read(playerProvider.notifier).cycleMode(),
+            ),
         ],
       ),
     );
