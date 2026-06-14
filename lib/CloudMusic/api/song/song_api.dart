@@ -10,6 +10,7 @@ import 'package:yuugao/CloudMusic/api/song/entity/song_like_check_entity.dart';
 import 'package:yuugao/CloudMusic/api/song/entity/song_url_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/bool_entity.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
+import 'package:yuugao/services/metadata_cache_service.dart';
 
 mixin SongApi {
   /// 新歌速递
@@ -139,5 +140,83 @@ mixin SongApi {
       url: '${Api.songComments}$id',
       data: data,
     );
+  }
+
+  // ═══ Cache-First 封装 ═══
+
+  /// 歌曲详情（缓存优先）。
+  ///
+  /// 先从本地缓存读取即时返回，同时后台请求最新数据并更新缓存。
+  /// [onResult] 在数据就绪时回调（缓存命中可能回调两次：缓存 + 最新）。
+  Future<SongDetailEntity?> songDetailCached({
+    required List<int> ids,
+    void Function(SongDetailEntity data)? onResult,
+  }) async {
+    SongDetailEntity? last;
+
+    // 1. 尝试缓存
+    if (ids.length == 1) {
+      final cached = await MetadataCacheService.instance.getTrackDetail(ids.first);
+      if (cached != null) {
+        try {
+          last = SongDetailEntity.fromJson(cached);
+          onResult?.call(last);
+        } catch (_) {}
+      }
+    }
+
+    // 2. 请求最新
+    final fresh = await songDetail(ids: ids);
+    if (fresh != null && fresh.code == 200) {
+      if (ids.length == 1 && fresh.songs?.isNotEmpty == true) {
+        MetadataCacheService.instance.cacheTrackDetail(
+          ids.first,
+          fresh.toJson(),
+        );
+      }
+      if (fresh != last) {
+        onResult?.call(fresh);
+        last = fresh;
+      }
+    }
+
+    return last;
+  }
+
+  /// 歌词（缓存优先）。
+  ///
+  /// 先从本地缓存读取即时返回，同时后台请求最新数据并更新缓存。
+  /// [onResult] 在数据就绪时回调（缓存命中可能回调两次：缓存 + 最新）。
+  Future<SongLyricEntity?> songLyricCached({
+    required String id,
+    void Function(SongLyricEntity data)? onResult,
+  }) async {
+    SongLyricEntity? last;
+    final songId = int.tryParse(id);
+
+    // 1. 尝试缓存
+    if (songId != null) {
+      final cached = await MetadataCacheService.instance.getLyric(songId);
+      if (cached != null) {
+        try {
+          last = SongLyricEntity.fromJson(cached);
+          onResult?.call(last);
+        } catch (_) {}
+      }
+    }
+
+    // 2. 请求最新
+    final fresh = await songLyric(id: id);
+    if (fresh != null && fresh.code == 200) {
+      if (songId != null) {
+        MetadataCacheService.instance.cacheLyric(songId, fresh.toJson());
+      }
+      if (fresh != last) {
+        onResult?.call(fresh);
+        last = fresh;
+      }
+    }
+
+    return last;
   }
 }

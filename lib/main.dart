@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/app.dart';
 import 'package:yuugao/services/cache_service.dart';
+import 'package:yuugao/services/metadata_cache_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,9 @@ Future<void> main() async {
 
   // 缓存索引
   await CacheService.instance.init();
+
+  // 元数据缓存
+  await MetadataCacheService.instance.init();
 
   runApp(const ProviderScope(child: YuugaoApp()));
 }

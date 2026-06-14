@@ -41,7 +41,9 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
       _lines = [];
     });
     try {
-      final res = await BujuanMusicManager().songLyric(id: songId.toString());
+      final res = await BujuanMusicManager().songLyricCached(
+        id: songId.toString(),
+      );
       _lines = _parse(res?.lrc?.lyric ?? '');
     } catch (_) {
       _lines = [];
