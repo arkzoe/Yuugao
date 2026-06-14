@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
@@ -82,9 +84,86 @@ class PlayerNotifier extends Notifier<PlayerState> {
   /// 防止 just_audio 跃迁期间发射的中间态（0、null、旧 index）覆盖 UI。
   int? _intendedIndex;
 
+  /// 持久化防抖计时器
+  Timer? _persistTimer;
+
+  // ═══ 持久化 ═══
+
+  static const _kQueueJson = 'player_queue_json';
+  static const _kIndex = 'player_index';
+  static const _kPositionMs = 'player_position_ms';
+  static const _kMode = 'player_mode';
+
+  /// 将当前播放状态保存到 SharedPreferences（防抖 2 秒）。
+  Future<void> _persistState() async {
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(seconds: 2), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final s = state;
+      await prefs.setString(
+        _kQueueJson,
+        jsonEncode(s.queue.map((song) => song.id).toList()),
+      );
+      await prefs.setInt(_kIndex, s.currentIndex);
+      await prefs.setInt(_kPositionMs, s.position.inMilliseconds);
+      await prefs.setString(_kMode, s.mode.name);
+    });
+  }
+
+  /// 从 SharedPreferences 恢复上次播放状态。
+  /// 返回 true 表示有可恢复的状态。
+  Future<bool> restore() async {
+    final prefs = await SharedPreferences.getInstance();
+    final queueJson = prefs.getString(_kQueueJson);
+    if (queueJson == null || queueJson.isEmpty) return false;
+
+    final ids = (jsonDecode(queueJson) as List<dynamic>)
+        .map((e) => (e as num).toInt())
+        .toList();
+    if (ids.isEmpty) return false;
+
+    final index = prefs.getInt(_kIndex) ?? 0;
+    final posMs = prefs.getInt(_kPositionMs) ?? 0;
+    final modeStr = prefs.getString(_kMode) ?? 'sequential';
+    final mode = PlayMode.values.firstWhere(
+      (m) => m.name == modeStr,
+      orElse: () => PlayMode.sequential,
+    );
+
+    // 通过 songDetail 还原 Song 对象，然后恢复播放
+    try {
+      final detail = await BujuanMusicManager().songDetail(ids: ids);
+      if (detail == null || detail.songs == null || detail.songs!.isEmpty) {
+        return false;
+      }
+      final songs = detail.songs!
+          .map((s) => Song.fromSongDetail(s))
+          .toList();
+      if (songs.isEmpty) return false;
+
+      final clampedIndex = index.clamp(0, songs.length - 1);
+      state = state.copyWith(
+        queue: songs,
+        currentIndex: clampedIndex,
+        mode: mode,
+      );
+      await _audio.setQueue(
+        songs,
+        initialIndex: clampedIndex,
+        autoPlay: false, // 恢复状态但不自动播放
+      );
+      await _audio.seek(Duration(milliseconds: posMs));
+      await setMode(mode);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void _bind() {
     _audio.positionStream.listen((pos) {
       state = state.copyWith(position: pos);
+      _persistState();
     });
     _audio.durationStream.listen((dur) {
       state = state.copyWith(duration: dur ?? Duration.zero);
@@ -95,6 +174,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (_intendedIndex != null && idx != _intendedIndex) return;
       _intendedIndex = null; // 匹配成功，后续事件正常接受
       state = state.copyWith(currentIndex: idx);
+      _persistState();
     });
     _audio.playerStateStream.listen((ps) {
       // 切歌时 seek / setAudioSources 内部会短暂发射 playing=false，
@@ -115,6 +195,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
             ? cur
             : state.currentIndex.clamp(0, q.length - 1);
         state = state.copyWith(queue: q, currentIndex: idx);
+        _persistState();
       }
     });
   }

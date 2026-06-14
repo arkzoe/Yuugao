@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/pages/home_page.dart';
@@ -43,7 +44,14 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(userProvider.notifier).restore());
+    Future.microtask(() async {
+      await ref.read(userProvider.notifier).restore();
+      // 登录态恢复后尝试恢复上次播放状态
+      final userState = ref.read(userProvider);
+      if (userState.status == AuthStatus.authenticated) {
+        ref.read(playerProvider.notifier).restore();
+      }
+    });
   }
 
   @override

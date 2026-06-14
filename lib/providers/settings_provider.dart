@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 主题感知色板 — 替代硬编码 AppColors，在深浅切换时自动更新。
 class ThemeColors {
@@ -44,10 +45,12 @@ final currentColorsProvider = Provider<ThemeColors>((ref) {
   return mode == ThemeMode.dark ? ThemeColors.dark : ThemeColors.light;
 });
 
+const _themePrefsKey = 'theme_mode';
+
 class SettingsState {
   final ThemeMode themeMode;
 
-  const SettingsState({this.themeMode = ThemeMode.dark});
+  const SettingsState({this.themeMode = ThemeMode.light});
 
   SettingsState copyWith({ThemeMode? themeMode}) {
     return SettingsState(themeMode: themeMode ?? this.themeMode);
@@ -56,12 +59,31 @@ class SettingsState {
 
 class SettingsNotifier extends Notifier<SettingsState> {
   @override
-  SettingsState build() => const SettingsState();
+  SettingsState build() {
+    // 异步加载持久化的主题设置，初始默认浅色
+    _loadPersistedTheme();
+    return const SettingsState();
+  }
 
-  void toggleTheme() {
-    state = state.copyWith(
-      themeMode:
-          state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+  Future<void> _loadPersistedTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_themePrefsKey);
+    if (stored != null) {
+      final mode = stored == 'dark' ? ThemeMode.dark : ThemeMode.light;
+      state = state.copyWith(themeMode: mode);
+    }
+  }
+
+  Future<void> toggleTheme() async {
+    final next =
+        state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    state = state.copyWith(themeMode: next);
+
+    // 持久化
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _themePrefsKey,
+      next == ThemeMode.dark ? 'dark' : 'light',
     );
   }
 }
