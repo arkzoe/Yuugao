@@ -31,6 +31,7 @@ import 'package:yuugao/CloudMusic/api/user/entity/qrcode_key_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/string_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_info_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_playlist_entity.dart';
+import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 
 JsonConvert jsonConvert = JsonConvert();
 
@@ -1250,6 +1251,40 @@ class JsonConvert {
           as M;
     }
 
+    // ── 私人 FM ──
+    if (<PersonalFmEntity>[] is M) {
+      return data
+              .map<PersonalFmEntity>(
+                (Map<String, dynamic> e) => PersonalFmEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<PersonalFmData>[] is M) {
+      return data
+              .map<PersonalFmData>(
+                (Map<String, dynamic> e) => PersonalFmData.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<PersonalFmDataAr>[] is M) {
+      return data
+              .map<PersonalFmDataAr>(
+                (Map<String, dynamic> e) => PersonalFmDataAr.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<PersonalFmDataAl>[] is M) {
+      return data
+              .map<PersonalFmDataAl>(
+                (Map<String, dynamic> e) => PersonalFmDataAl.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+
     debugPrint("$M not found");
 
     return null;
@@ -1442,6 +1477,10 @@ class JsonConvertClassCollection {
     (UserPlaylistPlaylist).toString(): UserPlaylistPlaylist.fromJson,
     (UserPlaylistPlaylistCreator).toString():
         UserPlaylistPlaylistCreator.fromJson,
+    (PersonalFmEntity).toString(): PersonalFmEntity.fromJson,
+    (PersonalFmData).toString(): PersonalFmData.fromJson,
+    (PersonalFmDataAr).toString(): PersonalFmDataAr.fromJson,
+    (PersonalFmDataAl).toString(): PersonalFmDataAl.fromJson,
     (CommentEntity).toString(): CommentEntity.fromJson,
     (CommentItem).toString(): CommentItem.fromJson,
     (CommentUser).toString(): CommentUser.fromJson,

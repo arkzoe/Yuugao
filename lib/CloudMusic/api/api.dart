@@ -115,4 +115,10 @@ class Api {
   /// 首页龙珠
   static const String homepageDragonBall = '/api/homepage/dragon/ball/static';
 
+  /// 私人FM
+  static const String personalFm = '/api/v1/radio/get';
+
+  /// FM垃圾桶
+  static const String fmTrash = '/api/radio/trash/add';
+
 }

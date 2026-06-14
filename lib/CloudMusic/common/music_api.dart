@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../api/album/album_api.dart';
+import '../api/fm/fm_api.dart';
 import '../api/mv/mv_api.dart';
 import '../api/playlist/playlist_api.dart';
 import '../api/recommend/recommend_api.dart';
@@ -27,7 +28,8 @@ class BujuanMusicManager
         PlaylistApi,
         SongApi,
         MvApi,
-        SearchApi {
+        SearchApi,
+        FmApi {
   static final BujuanMusicManager _instance = BujuanMusicManager._internal();
 
   factory BujuanMusicManager() => _instance;
