@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/pages/search_page.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
-import 'package:yuugao/theme.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/home_action_buttons.dart';
+import 'package:yuugao/widgets/home_drawer.dart';
 import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/playlist_card.dart';
 
@@ -18,6 +19,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
@@ -39,14 +42,17 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(currentColorsProvider);
     final user = ref.watch(userProvider);
     final playlistState = ref.watch(playlistProvider);
 
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: const HomeDrawer(),
       body: SafeArea(
         child: Column(
           children: [
-            _buildAppBar(user.avatarUrl),
+            _buildAppBar(user.avatarUrl, colors),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _load,
@@ -66,7 +72,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       child: HomeActionButtons(),
                     ),
                     const SizedBox(height: 8),
-                    _buildPlaylistSection(playlistState),
+                    _buildPlaylistSection(playlistState, colors),
                   ],
                 ),
               ),
@@ -78,13 +84,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildAppBar(String avatar) {
+  Widget _buildAppBar(String avatar, ThemeColors colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
           GestureDetector(
-            onTap: _showAccountSheet,
+            onTap: () => _scaffoldKey.currentState?.openDrawer(),
             child: ClipOval(
               child: CoverImage(url: avatar, size: 36, radius: 18),
             ),
@@ -103,49 +109,26 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  void _showAccountSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.card,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.logout, color: AppColors.primary),
-              title: const Text('退出登录'),
-              onTap: () async {
-                Navigator.pop(context);
-                await ref.read(userProvider.notifier).logout();
-                ref.read(playlistProvider.notifier).clear();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaylistSection(PlaylistState state) {
+  Widget _buildPlaylistSection(PlaylistState state, ThemeColors colors) {
     // 包含"我喜欢的音乐"在内的全部歌单，单列展示。
     final all = [...state.created, ...state.subscribed];
     if (all.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(32),
+      return Padding(
+        padding: const EdgeInsets.all(32),
         child: Center(
-          child: Text('暂无歌单', style: TextStyle(color: AppColors.textSecondary)),
+          child: Text('暂无歌单', style: TextStyle(color: colors.textSecondary)),
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              Icon(Icons.queue_music, color: AppColors.primary, size: 18),
-              SizedBox(width: 6),
+              Icon(Icons.queue_music, color: colors.primary, size: 18),
+              const SizedBox(width: 6),
               Text('我的歌单',
                   style:
                       TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),

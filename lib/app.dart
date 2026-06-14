@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/pages/home_page.dart';
 import 'package:yuugao/pages/login_page.dart';
 import 'package:yuugao/theme.dart';
 
-class YuugaoApp extends StatelessWidget {
+class YuugaoApp extends ConsumerWidget {
   const YuugaoApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(
+      settingsProvider.select((s) => s.themeMode),
+    );
+
     return MaterialApp(
       title: 'yuugao',
       debugShowCheckedModeBanner: false,
-      theme: buildDarkTheme(),
+      theme: buildLightTheme(),
+      darkTheme: buildDarkTheme(),
+      themeMode: themeMode,
       home: const _AuthGate(),
       routes: {
         '/login': (_) => const LoginPage(),
