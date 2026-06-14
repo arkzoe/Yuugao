@@ -1489,6 +1489,11 @@ class JsonConvertClassCollection {
     (SearchSongItem).toString(): SearchSongItem.fromJson,
     (SearchSongArtist).toString(): SearchSongArtist.fromJson,
     (SearchSongAlbum).toString(): SearchSongAlbum.fromJson,
+    (SearchArtistItem).toString(): SearchArtistItem.fromJson,
+    (SearchAlbumItem).toString(): SearchAlbumItem.fromJson,
+    (SearchAlbumItemArtist).toString(): SearchAlbumItemArtist.fromJson,
+    (SearchPlaylistItem).toString(): SearchPlaylistItem.fromJson,
+    (SearchPlaylistItemCreator).toString(): SearchPlaylistItemCreator.fromJson,
   };
 
   bool containsKey(String type) {
