@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/pages/song_comments_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
+import 'package:yuugao/providers/playlist_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
@@ -72,6 +74,29 @@ class SongTile extends ConsumerWidget {
                         backgroundColor: colors.card,
                       ),
                     );
+                  },
+                ),
+                // 收藏 / 取消收藏
+                ListTile(
+                  leading:
+                      Icon(Icons.favorite_border, color: colors.textPrimary),
+                  title: Text('收藏',
+                      style: TextStyle(color: colors.textPrimary)),
+                  onTap: () {
+                    ref.read(playlistProvider.notifier).toggleLike(song.id);
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+                // 分享
+                ListTile(
+                  leading:
+                      Icon(Icons.share, color: colors.textPrimary),
+                  title: Text('分享',
+                      style: TextStyle(color: colors.textPrimary)),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    SharePlus.instance.share(ShareParams(
+                        text: '我在听「${song.name}」- ${song.artist}'));
                   },
                 ),
                 // 查看评论

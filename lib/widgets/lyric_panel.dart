@@ -25,6 +25,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
   int _currentSongId = -1;
   int _activeIndex = 0;
   bool _loading = false;
+  int _loadGen = 0; // 代次守卫，防快速切歌时旧结果覆盖新结果
   static const double _lineHeight = 44;
 
   @override
@@ -36,6 +37,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
   Future<void> _loadFor(int songId) async {
     if (songId == _currentSongId) return;
     _currentSongId = songId;
+    final gen = ++_loadGen;
     setState(() {
       _loading = true;
       _lines = [];
@@ -44,11 +46,14 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
       final res = await BujuanMusicManager().songLyricCached(
         id: songId.toString(),
       );
+      if (gen != _loadGen || !mounted) return;
       _lines = _parse(res?.lrc?.lyric ?? '');
     } catch (_) {
+      if (gen != _loadGen || !mounted) return;
       _lines = [];
     }
-    if (mounted) setState(() => _loading = false);
+    if (!mounted) return;
+    if (gen == _loadGen) setState(() => _loading = false);
   }
 
   List<LyricLine> _parse(String raw) {
@@ -107,10 +112,13 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
   @override
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
-    final song = ref.watch(playerProvider.select((s) => s.current));
-    if (song != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadFor(song.id));
-    }
+    final songId = ref.watch(playerProvider.select((s) => s.current?.id));
+    // 歌曲切换时加载歌词（listen 仅响应变化，不触发初始值）
+    ref.listen(playerProvider.select((s) => s.current?.id), (prev, next) {
+      if (next != null && next != prev) _loadFor(next);
+    });
+    // 首次挂载或 songId 为初始值时触发加载（_loadFor 内部 _currentSongId 守卫防重复）
+    if (songId != null) _loadFor(songId);
     // 监听进度同步高亮
     ref.listen(playerProvider.select((s) => s.position), (_, pos) {
       _syncActive(pos);

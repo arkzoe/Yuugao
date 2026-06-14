@@ -53,6 +53,19 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 14, color: colors.textPrimary)),
+                  const SizedBox(height: 4),
+                  // 细进度条
+                  FractionallySizedBox(
+                    widthFactor: state.progress,
+                    child: Container(
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
                   Text(display.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

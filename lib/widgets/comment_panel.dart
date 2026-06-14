@@ -18,12 +18,14 @@ class CommentPanel extends ConsumerStatefulWidget {
 class _CommentPanelState extends ConsumerState<CommentPanel> {
   int _songId = -1;
   bool _loading = false;
+  int _loadGen = 0; // 代次守卫，防快速切歌时旧结果覆盖新结果
   List<CommentItem> _hot = [];
   List<CommentItem> _latest = [];
 
   Future<void> _loadFor(int songId) async {
     if (songId == _songId) return;
     _songId = songId;
+    final gen = ++_loadGen;
     setState(() {
       _loading = true;
       _hot = [];
@@ -31,19 +33,26 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
     });
     try {
       final res = await BujuanMusicManager().songComments(id: songId, limit: 30);
+      if (gen != _loadGen || !mounted) return;
       _hot = res?.hotComments ?? [];
       _latest = res?.comments ?? [];
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (gen != _loadGen || !mounted) return;
+    }
+    if (!mounted) return;
+    if (gen == _loadGen) setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
-    final song = ref.watch(playerProvider.select((s) => s.current));
-    if (song != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadFor(song.id));
-    }
+    final songId = ref.watch(playerProvider.select((s) => s.current?.id));
+    // 歌曲切换时加载评论（listen 仅响应变化，不触发初始值）
+    ref.listen(playerProvider.select((s) => s.current?.id), (prev, next) {
+      if (next != null && next != prev) _loadFor(next);
+    });
+    // 首次挂载或 songId 为初始值时触发加载（_loadFor 内部 _songId 守卫防重复）
+    if (songId != null) _loadFor(songId);
 
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
