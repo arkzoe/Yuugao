@@ -103,8 +103,7 @@ class AudioService {
   static const int _expandConcurrency = 2;
 
   /// 请求音质（可运行时切换）。
-  String _level = 'exhigh';
-  set level(String v) => _level = v;
+  String level = 'exhigh';
 
   /// 当前实际生效的音质（网络自适应降级后可能与 _level 不同）。
   String _effectiveLevel = 'exhigh';
@@ -182,7 +181,7 @@ class AudioService {
     _fullCandidates = List.from(candidates);
     _fetchMore = fetchMore;
     _playlistTotal = totalCount > 0 ? totalCount : candidates.length;
-    _effectiveLevel = _level;
+    _effectiveLevel = level;
     _exhighEmptyChunks = 0;
 
     if (candidates.isEmpty) return;
@@ -280,6 +279,19 @@ class AudioService {
       await nextFm();
       return;
     }
+    // URL 过期校验：长时间播放后相邻歌曲的直链可能已过期
+    final curIdx = player.currentIndex ?? 0;
+    final nextIdx = curIdx + 1;
+    if (nextIdx < _queue.length && _isUrlExpired(_queue[nextIdx].id)) {
+      await _refreshUrls([_queue[nextIdx].id]);
+      final src = _buildSource(_queue[nextIdx]);
+      if (src != null) {
+        await _guard(() async {
+          await player.removeAudioSourceAt(nextIdx);
+          await player.insertAudioSource(nextIdx, src);
+        });
+      }
+    }
     indexSuppressed = true;
     await player.seekToNext();
     indexSuppressed = false;
@@ -288,6 +300,19 @@ class AudioService {
   Future<void> previous() async {
     // FM 模式下无上一首（随机推荐），忽略
     if (_isFmMode) return;
+    // URL 过期校验：与 next() 一致
+    final curIdx = player.currentIndex ?? 0;
+    final prevIdx = curIdx - 1;
+    if (prevIdx >= 0 && _isUrlExpired(_queue[prevIdx].id)) {
+      await _refreshUrls([_queue[prevIdx].id]);
+      final src = _buildSource(_queue[prevIdx]);
+      if (src != null) {
+        await _guard(() async {
+          await player.removeAudioSourceAt(prevIdx);
+          await player.insertAudioSource(prevIdx, src);
+        });
+      }
+    }
     indexSuppressed = true;
     await player.seekToPrevious();
     indexSuppressed = false;
@@ -805,6 +830,10 @@ class AudioService {
         final songs = await _fmIdsToSongs(data);
         if (songs.isEmpty) return false;
 
+        // 清空旧 URL，避免与新解析结果混淆
+        _resolvedUrls.clear();
+        _resolvedExpiry.clear();
+
         // 找第一首可播的
         for (final s in songs) {
           await _batchResolve([s]);
@@ -829,9 +858,7 @@ class AudioService {
       if (next == null) return false;
 
       _fmCurrentTrack = next;
-      _resolvedUrls.clear();
-      _resolvedExpiry.clear();
-      await _batchResolve([next]);
+      // URL 已在上面循环中解析，直接构建 AudioSource 即可
       final src = _buildSource(next);
       if (src == null) return false;
 

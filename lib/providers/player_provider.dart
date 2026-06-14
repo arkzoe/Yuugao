@@ -93,6 +93,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
   static const _kIndex = 'player_index';
   static const _kPositionMs = 'player_position_ms';
   static const _kMode = 'player_mode';
+  static const _kFmMode = 'player_fm_mode';
 
   /// 将当前播放状态保存到 SharedPreferences（防抖 2 秒）。
   Future<void> _persistState() async {
@@ -107,6 +108,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       await prefs.setInt(_kIndex, s.currentIndex);
       await prefs.setInt(_kPositionMs, s.position.inMilliseconds);
       await prefs.setString(_kMode, s.mode.name);
+      await prefs.setBool(_kFmMode, s.isFmMode);
     });
   }
 
@@ -124,20 +126,27 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
     final index = prefs.getInt(_kIndex) ?? 0;
     final posMs = prefs.getInt(_kPositionMs) ?? 0;
+    final fmMode = prefs.getBool(_kFmMode) ?? false;
     final modeStr = prefs.getString(_kMode) ?? 'sequential';
     final mode = PlayMode.values.firstWhere(
       (m) => m.name == modeStr,
       orElse: () => PlayMode.sequential,
     );
 
-    // 通过 songDetail 还原 Song 对象，然后恢复播放
+    // 通过 songDetail 还原 Song 对象，然后恢复播放。
+    // 容错：部分歌曲下架仍恢复剩余队列，不全丢。
     try {
       final detail = await BujuanMusicManager().songDetail(ids: ids);
-      if (detail == null || detail.songs == null || detail.songs!.isEmpty) {
-        return false;
+      final idToSong = <int, Song>{};
+      for (final s in (detail?.songs ?? [])) {
+        if (s.id != null && s.id! > 0) {
+          idToSong[s.id!] = Song.fromSongDetail(s);
+        }
       }
-      final songs = detail.songs!
-          .map((s) => Song.fromSongDetail(s))
+      // 按原顺序过滤，保留仍存在的歌曲
+      final songs = ids
+          .map((id) => idToSong[id])
+          .whereType<Song>()
           .toList();
       if (songs.isEmpty) return false;
 
@@ -146,14 +155,16 @@ class PlayerNotifier extends Notifier<PlayerState> {
         queue: songs,
         currentIndex: clampedIndex,
         mode: mode,
+        isFmMode: fmMode,
       );
+      // 先设 mode 再 setQueue，避免后台扩展期间模式变更冲突
+      await setMode(mode);
       await _audio.setQueue(
         songs,
         initialIndex: clampedIndex,
         autoPlay: false, // 恢复状态但不自动播放
       );
       await _audio.seek(Duration(milliseconds: posMs));
-      await setMode(mode);
       return true;
     } catch (_) {
       return false;
@@ -293,6 +304,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
         await _audio.setLoopMode(LoopMode.one);
         break;
     }
+    _persistState(); // 模式变更立即持久化，不等进度触发
   }
 
   /// 循环切换播放模式
