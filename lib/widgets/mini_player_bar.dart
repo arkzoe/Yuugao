@@ -49,7 +49,7 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
               child: Row(
                 children: [
                   const SizedBox(width: 10),
-                  CoverImage(url: display.coverThumb(80), size: 44),
+                  CoverImage(url: display.coverThumb(80), size: 44, radius: 22),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
