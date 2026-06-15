@@ -22,15 +22,15 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
 
   @override
   Widget build(BuildContext context) {
-    // 动态背景色（封面取色）
+    // 只在歌曲切换或主题变化时重建，不再每 ~200ms 重绘整行
+    final song =
+        ref.watch(playerProvider.select((s) => s.current));
+    final isPlaying =
+        ref.watch(playerProvider.select((s) => s.isPlaying));
     final playerColors = ref.watch(playerThemeProvider);
-    // UI 控件色（静态主题）
     final colors = ref.watch(currentColorsProvider);
-    final state = ref.watch(playerProvider);
-    final song = state.current;
 
     if (song != null) _lastSong = song;
-    // 过渡期间 current 可能短暂为 null，回退到上一首已知歌曲
     final display = song ?? _lastSong;
     if (display == null) return const SizedBox.shrink();
 
@@ -43,22 +43,8 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
         ),
         child: Column(
           children: [
-            // 顶部细进度条
-            SizedBox(
-              height: 2,
-              child: Stack(
-                children: [
-                  // 底色轨道
-                  Container(color: colors.divider),
-                  // 已播放部分
-                  FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: state.progress,
-                    child: Container(color: colors.primary),
-                  ),
-                ],
-              ),
-            ),
+            // 顶部细进度条 — 独立监听 progress 避免父级跟着每 ~200ms 重建
+            const _MiniProgressBar(),
             Expanded(
               child: Row(
                 children: [
@@ -86,7 +72,7 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
                   ),
                   IconButton(
                     icon: Icon(
-                      state.isPlaying
+                      isPlaying
                           ? Icons.pause_circle
                           : Icons.play_circle,
                       size: 36,
@@ -104,6 +90,32 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 迷你进度条 — 仅监听 progress，与父级解耦，每 ~200ms 只重建这 2px 高的小条。
+class _MiniProgressBar extends ConsumerWidget {
+  const _MiniProgressBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progress =
+        ref.watch(playerProvider.select((s) => s.progress));
+    final colors = ref.watch(currentColorsProvider);
+
+    return SizedBox(
+      height: 2,
+      child: Stack(
+        children: [
+          Container(color: colors.divider),
+          FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: progress,
+            child: Container(color: colors.primary),
+          ),
+        ],
       ),
     );
   }

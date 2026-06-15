@@ -24,11 +24,13 @@ class _PlayerProgressBarState extends ConsumerState<PlayerProgressBar> {
   @override
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
-    final state = ref.watch(playerProvider);
-    final total = state.duration.inMilliseconds.toDouble();
-    final pos = state.position.inMilliseconds
-        .toDouble()
-        .clamp(0.0, total <= 0 ? 0.0 : total);
+    // 仅监听需要的字段，避免 buffering/isFmMode 等无关状态变化引发重建
+    final totalMs =
+        ref.watch(playerProvider.select((s) => s.duration.inMilliseconds));
+    final posMs =
+        ref.watch(playerProvider.select((s) => s.position.inMilliseconds));
+    final total = totalMs.toDouble();
+    final pos = posMs.toDouble().clamp(0.0, total <= 0 ? 0.0 : total);
     final value = _dragValue ?? pos;
 
     return Column(
@@ -61,7 +63,7 @@ class _PlayerProgressBarState extends ConsumerState<PlayerProgressBar> {
               Text(_fmt(Duration(milliseconds: value.toInt())),
                   style: TextStyle(
                       fontSize: 11, color: colors.textSecondary)),
-              Text(_fmt(state.duration),
+              Text(_fmt(Duration(milliseconds: totalMs)),
                   style: TextStyle(
                       fontSize: 11, color: colors.textSecondary)),
             ],

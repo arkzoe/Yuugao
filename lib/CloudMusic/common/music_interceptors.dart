@@ -57,6 +57,10 @@ String encryptPassword(String password) {
 }
 
 class MusicApiInterceptors extends InterceptorsWrapper {
+  // ── 预编译正则 & 复用 Random，避免每次请求重新解析/构造 ──
+  static final _apiPathRe = RegExp(r'\w*api');
+  static final _csrfRe = RegExp(r'_csrf=([^(;|$)]+)');
+  static final _random = Random();
   @override
   void onRequest(
     RequestOptions options,
@@ -105,14 +109,13 @@ class MusicApiInterceptors extends InterceptorsWrapper {
   }
 
   String getUserAgent(UserAgent agent) {
-    var random = Random();
     switch (agent) {
       case UserAgent.random:
-        return userAgentList[random.nextInt(userAgentList.length)];
+        return userAgentList[_random.nextInt(userAgentList.length)];
       case UserAgent.pc:
-        return userAgentList[random.nextInt(5) + 8];
+        return userAgentList[_random.nextInt(5) + 8];
       case UserAgent.mobile:
-        return userAgentList[random.nextInt(7)];
+        return userAgentList[_random.nextInt(7)];
     }
   }
 
@@ -140,7 +143,7 @@ class MusicApiInterceptors extends InterceptorsWrapper {
     ).toString();
     var newData = {
       'method': options.method,
-      'url': oldUriStr.replaceAll(RegExp(r'\w*api'), 'api'),
+      'url': oldUriStr.replaceAll(_apiPathRe, 'api'),
       'params': options.data,
     };
     options.data = linuxapi(
@@ -151,12 +154,12 @@ class MusicApiInterceptors extends InterceptorsWrapper {
   void _handleWeApi(RequestOptions options) {
     // print('----------${options.extra}--${options.data}');
     var oldUriStr = options.uri.toString();
-    options.path = oldUriStr.replaceAll(RegExp(r'\w*api'), 'weapi');
+    options.path = oldUriStr.replaceAll(_apiPathRe, 'weapi');
 
     //weApi方式请求body里面需要带上csrfToken字段，这个是登录请求set-cookie返回的
     String csrfToken = '';
     csrfToken =
-        RegExp(r'_csrf=([^(;|$)]+)')
+        _csrfRe
             .firstMatch(options.headers[HttpHeaders.cookieHeader] ?? '')
             ?.group(1) ??
         '';
@@ -178,7 +181,7 @@ class MusicApiInterceptors extends InterceptorsWrapper {
   ) {
     var oldUriStr = options.uri.toString();
     if (type == EncryptType.eApi) {
-      options.path = oldUriStr.replaceAll(RegExp(r'\w*api'), 'eapi');
+      options.path = oldUriStr.replaceAll(_apiPathRe, 'eapi');
     }
 
     var header = {};
@@ -208,7 +211,7 @@ class MusicApiInterceptors extends InterceptorsWrapper {
       header['MUSIC_A'] = cookiesMap['MUSIC_A'];
     }
     header['requestId'] =
-        '${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(1000).toString().padLeft(4, '0')}';
+        '${DateTime.now().millisecondsSinceEpoch}${_random.nextInt(1000).toString().padLeft(4, '0')}';
     options.data = Map.from(options.data);
     options.data['header'] = header;
     if (type == EncryptType.eApi) {

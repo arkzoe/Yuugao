@@ -17,8 +17,11 @@ class PlaylistPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
-    final state = ref.watch(playerProvider);
-    if (state.queue.isEmpty) {
+    // 仅监听队列和当前索引，忽略高频变化的位置/缓冲状态
+    final queue = ref.watch(playerProvider.select((s) => s.queue));
+    final currentIndex =
+        ref.watch(playerProvider.select((s) => s.currentIndex));
+    if (queue.isEmpty) {
       return Center(
         child:
             Text('队列为空', style: TextStyle(color: colors.textSecondary)),
@@ -33,21 +36,21 @@ class PlaylistPanel extends ConsumerWidget {
             children: [
               const Icon(Icons.queue_music, size: 18),
               const SizedBox(width: 6),
-              Text('播放队列 (${state.queue.length})',
+              Text('播放队列 (${queue.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
             ],
           ),
         ),
         Expanded(
           child: ListView.builder(
-            itemCount: state.queue.length,
+            itemCount: queue.length,
             itemExtent: _itemHeight,
             // addRepaintBoundaries: true 为每项包裹 RepaintBoundary，
             // 滚动时仅重绘新进入视口的行，已回收行不重绘。
             addRepaintBoundaries: true,
             itemBuilder: (context, i) {
-              final song = state.queue[i];
-              final active = i == state.currentIndex;
+              final song = queue[i];
+              final active = i == currentIndex;
               return _PlaylistItem(
                 songName: song.name,
                 artist: song.artist.isEmpty ? '未知歌手' : song.artist,

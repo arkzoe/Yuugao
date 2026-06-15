@@ -20,6 +20,8 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   bool _isDrawerOpen = false;
+  int _lastHour = -1;
+  String _cachedGreeting = '';
 
   @override
   void initState() {
@@ -40,13 +42,16 @@ class _HomePageState extends ConsumerState<HomePage> {
     await ref.read(playlistProvider.notifier).fetchAll();
   }
 
+  /// 根据当前小时返回问候语，按小时缓存避免每次 build 都 new DateTime。
   String _greeting() {
     final h = DateTime.now().hour;
-    if (h < 6) return '夜深了';
-    if (h < 12) return '上午好';
-    if (h < 14) return '中午好';
-    if (h < 18) return '下午好';
-    return '晚上好';
+    if (h == _lastHour) return _cachedGreeting;
+    _lastHour = h;
+    if (h < 6) return _cachedGreeting = '夜深了';
+    if (h < 12) return _cachedGreeting = '上午好';
+    if (h < 14) return _cachedGreeting = '中午好';
+    if (h < 18) return _cachedGreeting = '下午好';
+    return _cachedGreeting = '晚上好';
   }
 
   @override

@@ -49,8 +49,11 @@ class SongPalette {
 
 /// 管理当前歌曲封面的取色状态。
 /// 按 song.id 缓存，避免重复计算；带代次守卫防止旧结果覆盖。
+///
+/// 缓存上限 20 条，超出后淘汰最旧的条目，防止长时间 session 内存膨胀。
 class PaletteNotifier extends Notifier<SongPalette?> {
   final Map<int, SongPalette> _cache = {};
+  static const int _maxCacheSize = 20;
   int _pendingId = -1;
 
   @override
@@ -92,6 +95,10 @@ class PaletteNotifier extends Notifier<SongPalette?> {
       if (_pendingId != song.id) return; // 代次守卫
 
       final sp = SongPalette.fromGenerator(palette);
+      // LRU 淘汰：缓存超出上限时移除最旧条目
+      if (_cache.length >= _maxCacheSize) {
+        _cache.remove(_cache.keys.first);
+      }
       _cache[song.id] = sp;
       state = sp;
     } catch (_) {
