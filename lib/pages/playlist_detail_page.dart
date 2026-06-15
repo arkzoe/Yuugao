@@ -395,33 +395,21 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                         addAutomaticKeepAlives: false,
                       ),
                     ),
-                    // 底部指示器
-                    SliverToBoxAdapter(
-                      child: _loadingMore
-                          ? const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                ),
-                              ),
-                            )
-                          : _exhausted && _songs.isNotEmpty
-                              ? Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Center(
-                                    child: Text(
-                                        '已加载全部 $_totalCount 首',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: colors.textSecondary)),
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                    ),
+                    // 底部指示器（仅加载中显示 spinner）
+                    if (_loadingMore)
+                      SliverToBoxAdapter(
+                        child: const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ],
               ),
