@@ -147,7 +147,11 @@ Future<void> main() async {
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.yuugao.channel.audio',
     androidNotificationChannelName: 'yuugao 播放',
-    androidNotificationOngoing: true,
+    // Android 14+ 息屏/后台时系统会杀无前台服务的进程。
+    // 默认值 true 会在暂停瞬间停止前台服务，导致切歌间隙被系统杀死。
+    // 设为 false 使通知栏常驻，保证高版本安卓息屏后持续播放。
+    // 注意：此选项为 false 时 androidNotificationOngoing 自动失效，不能同时传 true。
+    androidStopForegroundOnPause: false,
   );
 
   // API 层初始化（cookie 持久化路径）
