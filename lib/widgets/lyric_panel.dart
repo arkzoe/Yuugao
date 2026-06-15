@@ -43,9 +43,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
       _lines = [];
     });
     try {
-      final res = await BujuanMusicManager().songLyricCached(
-        id: songId.toString(),
-      );
+      final res = await MusicManager().songLyricCached(id: songId.toString());
       if (gen != _loadGen || !mounted) return;
       _lines = _parse(res?.lrc?.lyric ?? '');
     } catch (_) {
@@ -75,10 +73,12 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
               ? int.parse(msRaw) * 10
               : (msRaw.length == 1 ? int.parse(msRaw) * 100 : int.parse(msRaw));
         }
-        lines.add(LyricLine(
-          Duration(minutes: min, seconds: sec, milliseconds: ms),
-          text,
-        ));
+        lines.add(
+          LyricLine(
+            Duration(minutes: min, seconds: sec, milliseconds: ms),
+            text,
+          ),
+        );
       }
     }
     lines.sort((a, b) => a.time.compareTo(b.time));
@@ -129,8 +129,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
     }
     if (_lines.isEmpty) {
       return Center(
-        child: Text('纯音乐，请欣赏',
-            style: TextStyle(color: colors.textSecondary)),
+        child: Text('纯音乐，请欣赏', style: TextStyle(color: colors.textSecondary)),
       );
     }
 

@@ -30,9 +30,11 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
 
   Future<void> _load() async {
     try {
-      final res = await BujuanMusicManager()
-          .songComments(id: widget.song.id);
-      if (res == null) { setState(() => _loading = false); return; }
+      final res = await MusicManager().songComments(id: widget.song.id);
+      if (res == null) {
+        setState(() => _loading = false);
+        return;
+      }
       _hot = res.hotComments ?? [];
       _latest = res.comments ?? [];
     } catch (_) {}
@@ -57,28 +59,32 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      CoverImage(
-                          url: widget.song.coverThumb(120), size: 64),
+                      CoverImage(url: widget.song.coverThumb(120), size: 64),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(widget.song.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: colors.textPrimary)),
+                            Text(
+                              widget.song.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textPrimary,
+                              ),
+                            ),
                             const SizedBox(height: 4),
                             Text(
-                                widget.song.artist.isEmpty
-                                    ? '未知歌手'
-                                    : widget.song.artist,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: colors.textSecondary)),
+                              widget.song.artist.isEmpty
+                                  ? '未知歌手'
+                                  : widget.song.artist,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colors.textSecondary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -89,28 +95,36 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
                 if (_hot.isNotEmpty) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Text('热门评论',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textPrimary)),
+                    child: Text(
+                      '热门评论',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
                   ),
                   ..._hot.map((c) => _commentTile(c, colors)),
                   Divider(color: colors.divider),
                 ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Text('最新评论',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: colors.textPrimary)),
+                  child: Text(
+                    '最新评论',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
                 ),
                 if (_latest.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text('暂无评论',
-                        style: TextStyle(color: colors.textSecondary)),
+                    child: Text(
+                      '暂无评论',
+                      style: TextStyle(color: colors.textSecondary),
+                    ),
                   )
                 else
                   ..._latest.map((c) => _commentTile(c, colors)),
@@ -134,8 +148,11 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
                   ? CoverImage(url: avatarUrl, size: 32, radius: 0)
                   : Container(
                       color: colors.card,
-                      child: Icon(Icons.person,
-                          size: 16, color: colors.textSecondary),
+                      child: Icon(
+                        Icons.person,
+                        size: 16,
+                        color: colors.textSecondary,
+                      ),
                     ),
             ),
           ),
@@ -146,27 +163,38 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
               children: [
                 Row(
                   children: [
-                    Text(c.user?.nickname ?? '匿名',
-                        style: TextStyle(
-                            fontSize: 12, color: colors.textSecondary)),
+                    Text(
+                      c.user?.nickname ?? '匿名',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                      ),
+                    ),
                     const Spacer(),
-                    Text('${c.likedCount ?? 0}',
-                        style: TextStyle(
-                            fontSize: 11, color: colors.textSecondary)),
-                    Icon(Icons.thumb_up_alt_outlined,
-                        size: 13, color: colors.textSecondary),
+                    Text(
+                      '${c.likedCount ?? 0}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                    Icon(
+                      Icons.thumb_up_alt_outlined,
+                      size: 13,
+                      color: colors.textSecondary,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(c.content ?? '',
-                    style: TextStyle(
-                        fontSize: 14, color: colors.textPrimary)),
+                Text(
+                  c.content ?? '',
+                  style: TextStyle(fontSize: 14, color: colors.textPrimary),
+                ),
                 if ((c.time ?? 0) > 0) ...[
                   const SizedBox(height: 2),
                   Text(
                     _fmtTime(c.time!),
-                    style: TextStyle(
-                        fontSize: 10, color: colors.textSecondary),
+                    style: TextStyle(fontSize: 10, color: colors.textSecondary),
                   ),
                 ],
               ],

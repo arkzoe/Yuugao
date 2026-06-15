@@ -27,7 +27,7 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
 
   Future<void> _load() async {
     try {
-      final res = await BujuanMusicManager().recommendSongs();
+      final res = await MusicManager().recommendSongs();
       _songs = (res?.data?.dailySongs ?? [])
           .map((s) => Song.fromDailySong(s))
           .toList();
@@ -47,25 +47,27 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _songs.isEmpty
-                      ? Center(
-                          child: Text('暂无推荐（需登录）',
-                              style: TextStyle(
-                                  color: colors.textSecondary)))
-                      : Column(
-                          children: [
-                            _playAllBar(),
-                            Expanded(
-                              child: ListView.builder(
-                                itemCount: _songs.length,
-                                itemBuilder: (context, i) => SongTile(
-                                  song: _songs[i],
-                                  queue: _songs,
-                                  index: i,
-                                ),
-                              ),
+                  ? Center(
+                      child: Text(
+                        '暂无推荐（需登录）',
+                        style: TextStyle(color: colors.textSecondary),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        _playAllBar(),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: _songs.length,
+                            itemBuilder: (context, i) => SongTile(
+                              song: _songs[i],
+                              queue: _songs,
+                              index: i,
                             ),
-                          ],
+                          ),
                         ),
+                      ],
+                    ),
             ),
             const MiniPlayerBar(),
           ],
@@ -77,19 +79,18 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
   Widget _playAllBar() {
     final colors = ref.watch(currentColorsProvider);
     return InkWell(
-      onTap: () => ref
-          .read(playerProvider.notifier)
-          .play(_songs.first, queue: _songs),
+      onTap: () =>
+          ref.read(playerProvider.notifier).play(_songs.first, queue: _songs),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(Icons.play_circle_fill,
-                color: colors.primary, size: 28),
+            Icon(Icons.play_circle_fill, color: colors.primary, size: 28),
             const SizedBox(width: 8),
-            Text('播放全部 (${_songs.length})',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600)),
+            Text(
+              '播放全部 (${_songs.length})',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),

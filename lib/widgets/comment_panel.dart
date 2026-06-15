@@ -32,7 +32,7 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
       _latest = [];
     });
     try {
-      final res = await BujuanMusicManager().songComments(id: songId, limit: 30);
+      final res = await MusicManager().songComments(id: songId, limit: 30);
       if (gen != _loadGen || !mounted) return;
       _hot = res?.hotComments ?? [];
       _latest = res?.comments ?? [];
@@ -82,11 +82,14 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
     final colors = ref.watch(currentColorsProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: Text(text,
-          style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: colors.textSecondary,
-              fontSize: 13)),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: colors.textSecondary,
+          fontSize: 13,
+        ),
+      ),
     );
   }
 }
@@ -105,7 +108,10 @@ class _CommentRow extends ConsumerWidget {
         children: [
           ClipOval(
             child: CoverImage(
-                url: comment.user?.avatarUrl ?? '', size: 34, radius: 17),
+              url: comment.user?.avatarUrl ?? '',
+              size: 34,
+              radius: 17,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -115,32 +121,43 @@ class _CommentRow extends ConsumerWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(comment.user?.nickname ?? '',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: colors.textSecondary)),
+                      child: Text(
+                        comment.user?.nickname ?? '',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                        ),
+                      ),
                     ),
                     Row(
                       children: [
-                        Icon(Icons.thumb_up_alt_outlined,
-                            size: 12, color: colors.textSecondary),
+                        Icon(
+                          Icons.thumb_up_alt_outlined,
+                          size: 12,
+                          color: colors.textSecondary,
+                        ),
                         const SizedBox(width: 3),
-                        Text('${comment.likedCount ?? 0}',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: colors.textSecondary)),
+                        Text(
+                          '${comment.likedCount ?? 0}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                          ),
+                        ),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(comment.content ?? '',
-                    style: TextStyle(
-                        fontSize: 14, color: colors.textPrimary)),
+                Text(
+                  comment.content ?? '',
+                  style: TextStyle(fontSize: 14, color: colors.textPrimary),
+                ),
                 const SizedBox(height: 4),
-                Text(comment.timeStr ?? '',
-                    style: TextStyle(
-                        fontSize: 10, color: colors.textSecondary)),
+                Text(
+                  comment.timeStr ?? '',
+                  style: TextStyle(fontSize: 10, color: colors.textSecondary),
+                ),
               ],
             ),
           ),
