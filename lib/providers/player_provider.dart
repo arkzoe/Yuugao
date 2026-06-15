@@ -1,11 +1,13 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
+import 'package:yuugao/providers/playlist_provider.dart';
 import 'package:yuugao/services/audio_service.dart';
 
 // ignore: unused_import — SongFetcher 在 play() 签名中使用
@@ -265,6 +267,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
           ? cur
           : state.currentIndex,
     );
+
+    // 喜欢的音乐歌单默认启动心动模式
+    if (playlistId != null && playlistId == _likedPlaylistId) {
+      setMode(PlayMode.heartbeat);
+    }
   }
 
   Future<void> toggle() => _audio.toggle();
@@ -321,11 +328,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   Future<void> setMode(PlayMode mode) async {
-    // 心动模式：先调用 API 生成智能列表，成功后再设置播放器
+    // 心动模式：仅在「我喜欢的音乐」歌单可用
     if (mode == PlayMode.heartbeat) {
-      final ok = await _startHeartbeat();
-      if (!ok) {
-        // 不可用（无歌单上下文 / API 失败），跳过该模式继续到顺序播放
+      final pid = state.playlistId;
+      if (pid == null || pid != _likedPlaylistId) {
+        // 不是喜欢的音乐歌单，跳过心动模式
         state = state.copyWith(mode: PlayMode.sequential);
         _audio.setPlayMode(true);
         await _audio.setShuffle(false);
@@ -333,15 +340,17 @@ class PlayerNotifier extends Notifier<PlayerState> {
         _persistState(immediate: true);
         return;
       }
-      // _startHeartbeat 内部已完成 setQueue，只需设置播放器参数
+      // 立即显示心形图标 + 设置播放参数
+      state = state.copyWith(mode: PlayMode.heartbeat);
       _audio.setPlayMode(true);
       await _audio.setShuffle(false);
       await _audio.setLoopMode(LoopMode.all);
       _persistState(immediate: true);
+      // 后台异步加载智能列表
+      _startHeartbeat();
       return;
     }
     state = state.copyWith(mode: mode);
-    // 心动模式视为顺序播放（预下载策略）。
     _audio.setPlayMode(mode == PlayMode.sequential);
     switch (mode) {
       case PlayMode.sequential:
@@ -357,10 +366,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
         await _audio.setLoopMode(LoopMode.one);
         break;
       case PlayMode.heartbeat:
-        // unreachable — handled above
-        break;
+        break; // unreachable
     }
-    _persistState(immediate: true); // 模式变更立即持久化，不等进度触发
+    _persistState(immediate: true);
   }
 
   /// 循环切换播放模式
@@ -399,45 +407,94 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   // ═══ 心动模式 ═══
 
-  /// 启动心动模式：调用智能播放列表 API，替换当前队列。
-  Future<bool> _startHeartbeat() async {
+  /// 「我喜欢的音乐」歌单 ID，心动模式仅对此歌单开放。
+  int? get _likedPlaylistId =>
+      ref.read(playlistProvider).likedPlaylist?.id;
+
+  /// 后台加载智能播放列表并替换队列。
+  ///
+  /// 保留当前播放的歌曲在队首，心动列表追加到后面，
+  /// 替换后 seek 回原位置，避免中断用户正在听的歌。
+  Future<void> _startHeartbeat() async {
     final song = state.current;
     final pid = state.playlistId;
-    if (song == null || pid == null) return false;
+    if (song == null || pid == null) {
+      debugPrint('[heartbeat] FAIL: precondition lost');
+      _revertHeartbeat();
+      return;
+    }
 
     try {
+      debugPrint('[heartbeat] loading… songId=${song.id} playlistId=$pid');
       final res = await MusicManager().playmodeIntelligenceList(
-        id: song.id,
-        pid: pid,
-        sid: song.id,
+        songId: song.id,
+        playlistId: pid,
+        startMusicId: song.id,
+        count: 30,
       );
-      final items = res?.data;
-      if (items == null || items.isEmpty) return false;
+      if (res == null || res.code != 200) {
+        debugPrint('[heartbeat] FAIL: API code=${res?.code}');
+        _revertHeartbeat();
+        return;
+      }
+      final items = res.data;
+      if (items == null || items.isEmpty) {
+        debugPrint('[heartbeat] FAIL: empty data');
+        _revertHeartbeat();
+        return;
+      }
 
-      // 提取 ID → songDetail 获取完整信息
       final ids = items.map((e) => e.id ?? 0).where((id) => id > 0).toList();
-      if (ids.isEmpty) return false;
+      if (ids.isEmpty) {
+        debugPrint('[heartbeat] FAIL: no valid ids');
+        _revertHeartbeat();
+        return;
+      }
+      debugPrint('[heartbeat] got ${ids.length} ids');
 
       final detail = await MusicManager().songDetail(ids: ids);
-      final songs = (detail?.songs ?? [])
+      final newSongs = (detail?.songs ?? [])
           .map((s) => Song.fromSongDetail(s))
           .where((s) => s.id > 0)
           .toList();
-      if (songs.isEmpty) return false;
+      if (newSongs.isEmpty) {
+        debugPrint('[heartbeat] FAIL: no songs from detail');
+        _revertHeartbeat();
+        return;
+      }
+      debugPrint('[heartbeat] songDetail returned ${newSongs.length} songs');
 
-      // 替换队列为智能播放列表
+      if (state.mode != PlayMode.heartbeat) return;
+
+      // 保留当前歌曲在队首，心动列表追加到后面（去重）
+      final queue = [song, ...newSongs.where((s) => s.id != song.id)];
+      final savedPos = _audio.player.position;
+
+      state = state.copyWith(queue: queue, currentIndex: 0);
+      await _audio.setQueue(queue, initialIndex: 0);
+      // 恢复到之前的播放位置，无感知过渡
+      await _audio.seek(savedPos);
       state = state.copyWith(
-        queue: songs,
+        queue: _audio.queue,
         currentIndex: 0,
-        mode: PlayMode.heartbeat,
+        position: savedPos,
       );
-      await _audio.setQueue(songs, initialIndex: 0);
-      // setQueue 后同步实际队列
-      state = state.copyWith(queue: _audio.queue, currentIndex: 0);
-      return true;
-    } catch (_) {
-      return false;
+      debugPrint('[heartbeat] SUCCESS queue=${_audio.queue.length}');
+    } catch (e, st) {
+      debugPrint('[heartbeat] EXCEPTION: $e\n$st');
+      _revertHeartbeat();
     }
+  }
+
+  /// 心动模式加载失败时回退到顺序播放。
+  void _revertHeartbeat() {
+    if (state.mode != PlayMode.heartbeat) return;
+    state = state.copyWith(mode: PlayMode.sequential);
+    _audio.setPlayMode(true);
+    // fire-and-forget，不阻塞
+    _audio.setShuffle(false);
+    _audio.setLoopMode(LoopMode.all);
+    _persistState(immediate: true);
   }
 }
 
