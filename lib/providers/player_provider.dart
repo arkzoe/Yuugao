@@ -243,7 +243,17 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   Future<void> toggle() => _audio.toggle();
 
-  Future<void> next() {
+  Future<void> next() async {
+    // FM 模式由 AudioService 内部双缓冲接管，队列会在调用后整体替换，
+    // 必须等 _audio.next() 完成再同步状态，否则 UI 停留在第一首。
+    if (state.isFmMode) {
+      await _audio.next();
+      state = state.copyWith(
+        queue: _audio.queue,
+        currentIndex: 0,
+      );
+      return;
+    }
     final nxt = state.currentIndex + 1;
     if (nxt < state.queue.length) {
       state = state.copyWith(currentIndex: nxt);
