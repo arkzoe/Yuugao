@@ -21,9 +21,6 @@ mixin SearchApi {
       'limit': limit,
       'offset': offset,
     };
-    return await BujuanMusicManager().post<SearchEntity>(
-      url: Api.search,
-      data: data,
-    );
+    return await MusicManager().post<SearchEntity>(url: Api.search, data: data);
   }
 }

@@ -10,7 +10,7 @@ mixin FmApi {
   /// 返回 2-3 首推荐歌曲，可用于双缓冲预加载。
   Future<PersonalFmEntity?> personalFm() async {
     final data = {'timestamp': '${DateTime.now().millisecondsSinceEpoch}'};
-    return await BujuanMusicManager().post<PersonalFmEntity>(
+    return await MusicManager().post<PersonalFmEntity>(
       url: Api.personalFm,
       options: createOption(encryptType: EncryptType.weApi),
       data: data,
@@ -22,11 +22,8 @@ mixin FmApi {
   /// 将指定歌曲移入垃圾桶，不再推荐。
   Future<BoolEntity?> fmTrash({required int id}) async {
     final time = DateTime.now().millisecondsSinceEpoch;
-    final data = {
-      'songId': id,
-      'time': time,
-    };
-    return await BujuanMusicManager().post<BoolEntity>(
+    final data = {'songId': id, 'time': time};
+    return await MusicManager().post<BoolEntity>(
       url: '${Api.fmTrash}?alg=RT&songId=$id&time=$time',
       options: createOption(encryptType: EncryptType.weApi),
       data: data,

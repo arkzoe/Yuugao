@@ -17,17 +17,23 @@ class PlayerControlsRow extends ConsumerWidget {
         return Icons.shuffle;
       case PlayMode.repeatOne:
         return Icons.repeat_one;
+      case PlayMode.heartbeat:
+        return Icons.favorite;
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
-    final state = ref.watch(playerProvider);
-    final song = state.current;
-    final liked = song != null &&
+    // 仅监听影响按钮外观的字段，避免每 ~200ms 整行重建
+    final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
+    final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
+    final buffering = ref.watch(playerProvider.select((s) => s.buffering));
+    final mode = ref.watch(playerProvider.select((s) => s.mode));
+    final songId = ref.watch(playerProvider.select((s) => s.current?.id));
+    final liked = songId != null &&
         ref.watch(playlistProvider
-            .select((s) => s.likedSongIds.contains(song.id)));
+            .select((s) => s.likedSongIds.contains(songId)));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -37,15 +43,15 @@ class PlayerControlsRow extends ConsumerWidget {
           IconButton(
             icon: Icon(liked ? Icons.favorite : Icons.favorite_border,
                 color: liked ? colors.primary : colors.textPrimary),
-            onPressed: song == null
+            onPressed: songId == null
                 ? null
                 : () =>
-                    ref.read(playlistProvider.notifier).toggleLike(song.id),
+                    ref.read(playlistProvider.notifier).toggleLike(songId),
           ),
           IconButton(
             iconSize: 36,
             icon: const Icon(Icons.skip_previous),
-            onPressed: state.isFmMode
+            onPressed: isFm
                 ? null // FM 无上一首
                 : () => ref.read(playerProvider.notifier).prev(),
           ),
@@ -57,9 +63,9 @@ class PlayerControlsRow extends ConsumerWidget {
             child: IconButton(
               iconSize: 44,
               color: Colors.white,
-              icon: Icon(state.buffering
+              icon: Icon(buffering
                   ? Icons.hourglass_empty
-                  : (state.isPlaying ? Icons.pause : Icons.play_arrow)),
+                  : (isPlaying ? Icons.pause : Icons.play_arrow)),
               onPressed: () => ref.read(playerProvider.notifier).toggle(),
             ),
           ),
@@ -69,7 +75,7 @@ class PlayerControlsRow extends ConsumerWidget {
             onPressed: () => ref.read(playerProvider.notifier).next(),
           ),
           // FM 模式：垃圾桶；普通模式：播放模式切换
-          if (state.isFmMode)
+          if (isFm)
             IconButton(
               iconSize: 28,
               icon: const Icon(Icons.thumb_down_alt_outlined),
@@ -79,7 +85,7 @@ class PlayerControlsRow extends ConsumerWidget {
             )
           else
             IconButton(
-              icon: Icon(_modeIcon(state.mode), color: colors.textPrimary),
+              icon: Icon(_modeIcon(mode), color: colors.textPrimary),
               onPressed:
                   () => ref.read(playerProvider.notifier).cycleMode(),
             ),

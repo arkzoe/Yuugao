@@ -81,7 +81,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     final type = _currentType;
     setState(() => _loading[type] = true);
     try {
-      final res = await BujuanMusicManager().search(
+      final res = await MusicManager().search(
         keywords: kw,
         type: type,
         limit: 50,

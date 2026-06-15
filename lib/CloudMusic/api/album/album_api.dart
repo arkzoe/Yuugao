@@ -24,7 +24,7 @@ mixin AlbumApi {
       'area': area,
       'total': total,
     };
-    return await BujuanMusicManager().post<NewAlbumEntity>(
+    return await MusicManager().post<NewAlbumEntity>(
       url: Api.newAlbum,
       options: createOption(),
       data: data,
@@ -35,7 +35,7 @@ mixin AlbumApi {
   ///
   /// [id] 专辑ID（必选）
   Future<AlbumInfoEntity?> albumInfo({required int id}) async {
-    return await BujuanMusicManager().post<AlbumInfoEntity>(
+    return await MusicManager().post<AlbumInfoEntity>(
       url: '${Api.albumInfo}/$id',
       options: createOption(),
     );
@@ -54,7 +54,7 @@ mixin AlbumApi {
     bool total = true,
   }) async {
     final data = {'id': id, 'limit': limit, 'offset': offset, 'total': total};
-    return await BujuanMusicManager().post(
+    return await MusicManager().post(
       url: Api.artistAlbum,
       options: createOption(),
       data: data,

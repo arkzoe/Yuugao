@@ -19,6 +19,7 @@ class SongTile extends ConsumerWidget {
   final int index;
   final bool showCover;
   final int? label;
+  final int? playlistId;
 
   const SongTile({
     super.key,
@@ -27,6 +28,7 @@ class SongTile extends ConsumerWidget {
     this.index = 0,
     this.showCover = true,
     this.label,
+    this.playlistId,
   });
 
   void _showMenu(BuildContext context, WidgetRef ref) {
@@ -130,7 +132,11 @@ class SongTile extends ConsumerWidget {
     );
 
     return InkWell(
-      onTap: () => ref.read(playerProvider.notifier).play(song, queue: queue),
+      onTap: () => ref.read(playerProvider.notifier).play(
+        song,
+        queue: queue,
+        playlistId: playlistId,
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(

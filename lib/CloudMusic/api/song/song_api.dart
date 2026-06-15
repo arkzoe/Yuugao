@@ -19,7 +19,7 @@ mixin SongApi {
   /// [total] 默认为true
   Future<NewSongEntity?> newSongs({int type = 0, bool total = true}) async {
     final data = {'areaId': type, 'total': total};
-    return await BujuanMusicManager().post<NewSongEntity>(
+    return await MusicManager().post<NewSongEntity>(
       url: Api.newSongs,
       data: data,
     );
@@ -41,7 +41,7 @@ mixin SongApi {
       'encodeType': encodeType,
       'immerseType': level == 'sky' ? 'c51' : null,
     };
-    return await BujuanMusicManager().post<SongUrlEntity>(
+    return await MusicManager().post<SongUrlEntity>(
       url: Api.songUrl,
       data: data,
     );
@@ -58,7 +58,7 @@ mixin SongApi {
     final data = {
       "c": jsonEncode(ids.map((id) => {"id": id}).toList()),
     };
-    return await BujuanMusicManager().post<SongDetailEntity>(
+    return await MusicManager().post<SongDetailEntity>(
       url: Api.songDetail,
       data: data,
     );
@@ -70,7 +70,7 @@ mixin SongApi {
     required List<String> ids,
   }) async {
     final data = {'trackIds': ids};
-    return await BujuanMusicManager().post<SongLikeCheckEntity>(
+    return await MusicManager().post<SongLikeCheckEntity>(
       url: Api.songLikeCheck,
       data: data,
     );
@@ -80,7 +80,7 @@ mixin SongApi {
   /// [id] 歌曲id
   Future<SongQualityDetailEntity?> songQualityDetail({required int id}) async {
     final data = {'songId': id};
-    return await BujuanMusicManager().post<SongQualityDetailEntity>(
+    return await MusicManager().post<SongQualityDetailEntity>(
       url: Api.songQualityDetail,
       data: data,
     );
@@ -92,13 +92,8 @@ mixin SongApi {
   /// 需带上 lv/kv/tv 版本参数，否则接口返回空歌词。
   /// -1 表示请求最新版本：lv 原文、kv 逐字、tv 翻译。
   Future<SongLyricEntity?> songLyric({required String id}) async {
-    final data = {
-      'id': id,
-      'lv': -1,
-      'kv': -1,
-      'tv': -1,
-    };
-    return await BujuanMusicManager().post<SongLyricEntity>(
+    final data = {'id': id, 'lv': -1, 'kv': -1, 'tv': -1};
+    return await MusicManager().post<SongLyricEntity>(
       url: Api.songLyric,
       data: data,
     );
@@ -109,7 +104,7 @@ mixin SongApi {
   /// TODO: 创建 SongLikeCountEntity 替代 dynamic，需先确认 /api/song/red/count 响应结构
   Future<dynamic> songLikeCount({required int id}) async {
     final data = {'songId': id};
-    return await BujuanMusicManager().post(url: Api.songLikeCount, data: data);
+    return await MusicManager().post(url: Api.songLikeCount, data: data);
   }
 
   /// 喜欢/取消喜欢歌曲
@@ -117,13 +112,10 @@ mixin SongApi {
   /// [like] true=喜欢 false=取消
   ///
   /// 注：真实响应通常为 {code: 200}，BoolEntity.data 可能恒为 null，
-  /// 业务层应以 code==200 判断成功（见 BujuanMusicManager 调用方）。
+  /// 业务层应以 code==200 判断成功（见 MusicManager 调用方）。
   Future<BoolEntity?> songLike({required int id, bool like = true}) async {
     final data = {'trackId': id, 'like': like};
-    return await BujuanMusicManager().post<BoolEntity>(
-      url: Api.songLike,
-      data: data,
-    );
+    return await MusicManager().post<BoolEntity>(url: Api.songLike, data: data);
   }
 
   /// 歌曲评论
@@ -136,7 +128,7 @@ mixin SongApi {
     int offset = 0,
   }) async {
     final data = {'rid': id, 'limit': limit, 'offset': offset};
-    return await BujuanMusicManager().post<CommentEntity>(
+    return await MusicManager().post<CommentEntity>(
       url: '${Api.songComments}$id',
       data: data,
     );
@@ -156,7 +148,9 @@ mixin SongApi {
 
     // 1. 尝试缓存
     if (ids.length == 1) {
-      final cached = await MetadataCacheService.instance.getTrackDetail(ids.first);
+      final cached = await MetadataCacheService.instance.getTrackDetail(
+        ids.first,
+      );
       if (cached != null) {
         try {
           last = SongDetailEntity.fromJson(cached);

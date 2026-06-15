@@ -41,31 +41,45 @@ class _NeteaseHttpClient implements HttpClient {
 
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) =>
-      _inner.openUrl(method, url).then((r) { _inject(r, url); return r; });
+      _inner.openUrl(method, url).then((r) {
+        _inject(r, url);
+        return r;
+      });
 
   @override
-  Future<HttpClientRequest> open(String method, String host, int port, String path) =>
+  Future<HttpClientRequest> open(
+    String method,
+    String host,
+    int port,
+    String path,
+  ) =>
       openUrl(method, Uri(scheme: 'https', host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> getUrl(Uri url) =>
-      _inner.getUrl(url).then((r) { _inject(r, url); return r; });
+  Future<HttpClientRequest> getUrl(Uri url) => _inner.getUrl(url).then((r) {
+    _inject(r, url);
+    return r;
+  });
 
   @override
   Future<HttpClientRequest> get(String host, int port, String path) =>
       getUrl(Uri(host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> postUrl(Uri url) =>
-      _inner.postUrl(url).then((r) { _inject(r, url); return r; });
+  Future<HttpClientRequest> postUrl(Uri url) => _inner.postUrl(url).then((r) {
+    _inject(r, url);
+    return r;
+  });
 
   @override
   Future<HttpClientRequest> post(String host, int port, String path) =>
       postUrl(Uri(host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> putUrl(Uri url) =>
-      _inner.putUrl(url).then((r) { _inject(r, url); return r; });
+  Future<HttpClientRequest> putUrl(Uri url) => _inner.putUrl(url).then((r) {
+    _inject(r, url);
+    return r;
+  });
 
   @override
   Future<HttpClientRequest> put(String host, int port, String path) =>
@@ -73,23 +87,30 @@ class _NeteaseHttpClient implements HttpClient {
 
   @override
   Future<HttpClientRequest> deleteUrl(Uri url) =>
-      _inner.deleteUrl(url).then((r) { _inject(r, url); return r; });
+      _inner.deleteUrl(url).then((r) {
+        _inject(r, url);
+        return r;
+      });
 
   @override
   Future<HttpClientRequest> delete(String host, int port, String path) =>
       deleteUrl(Uri(host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> patchUrl(Uri url) =>
-      _inner.patchUrl(url).then((r) { _inject(r, url); return r; });
+  Future<HttpClientRequest> patchUrl(Uri url) => _inner.patchUrl(url).then((r) {
+    _inject(r, url);
+    return r;
+  });
 
   @override
   Future<HttpClientRequest> patch(String host, int port, String path) =>
       patchUrl(Uri(host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> headUrl(Uri url) =>
-      _inner.headUrl(url).then((r) { _inject(r, url); return r; });
+  Future<HttpClientRequest> headUrl(Uri url) => _inner.headUrl(url).then((r) {
+    _inject(r, url);
+    return r;
+  });
 
   @override
   Future<HttpClientRequest> head(String host, int port, String path) =>
@@ -115,23 +136,36 @@ class _NeteaseHttpClient implements HttpClient {
   @override
   String Function(Uri)? findProxy;
   @override
-  set authenticate(Future<bool> Function(Uri, String, String?)? f) => _inner.authenticate = f;
+  set authenticate(Future<bool> Function(Uri, String, String?)? f) =>
+      _inner.authenticate = f;
   @override
-  set authenticateProxy(Future<bool> Function(String, int, String, String?)? f) => _inner.authenticateProxy = f;
+  set authenticateProxy(
+    Future<bool> Function(String, int, String, String?)? f,
+  ) => _inner.authenticateProxy = f;
   @override
-  set badCertificateCallback(bool Function(X509Certificate, String, int)? cb) => _inner.badCertificateCallback = cb;
+  set badCertificateCallback(bool Function(X509Certificate, String, int)? cb) =>
+      _inner.badCertificateCallback = cb;
   @override
   set keyLog(dynamic Function(String)? cb) => _inner.keyLog = cb;
   @override
   String? userAgent;
   @override
-  set connectionFactory(Future<ConnectionTask<Socket>> Function(Uri, String?, int?)? f) => _inner.connectionFactory = f;
+  set connectionFactory(
+    Future<ConnectionTask<Socket>> Function(Uri, String?, int?)? f,
+  ) => _inner.connectionFactory = f;
   @override
-  void addCredentials(Uri url, String realm, HttpClientCredentials credentials) =>
-      _inner.addCredentials(url, realm, credentials);
+  void addCredentials(
+    Uri url,
+    String realm,
+    HttpClientCredentials credentials,
+  ) => _inner.addCredentials(url, realm, credentials);
   @override
-  void addProxyCredentials(String host, int port, String realm, HttpClientCredentials credentials) =>
-      _inner.addProxyCredentials(host, port, realm, credentials);
+  void addProxyCredentials(
+    String host,
+    int port,
+    String realm,
+    HttpClientCredentials credentials,
+  ) => _inner.addProxyCredentials(host, port, realm, credentials);
   @override
   void close({bool force = false}) => _inner.close(force: force);
 }
@@ -156,7 +190,7 @@ Future<void> main() async {
 
   // API 层初始化（cookie 持久化路径）
   final docs = await getApplicationDocumentsDirectory();
-  await BujuanMusicManager().init(cookiePath: '${docs.path}/.cookies');
+  await MusicManager().init(cookiePath: '${docs.path}/.cookies');
 
   // 缓存索引
   await CacheService.instance.init();

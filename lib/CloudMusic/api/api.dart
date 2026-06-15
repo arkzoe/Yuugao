@@ -121,4 +121,12 @@ class Api {
   /// FM垃圾桶
   static const String fmTrash = '/api/radio/trash/add';
 
+  /// 心动模式 / 智能播放列表
+  ///
+  /// 前缀 `/api/` 是为了让 weApi 拦截器的正则 \w*api 能匹配并改写为
+  /// `/weapi/playmode/intelligence/list`，否则原路径不含 "api" 导致
+  /// 请求发到错误地址。
+  static const String playmodeIntelligenceList =
+      '/api/playmode/intelligence/list';
+
 }

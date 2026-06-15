@@ -22,16 +22,17 @@ class PlaylistDetailPage extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PlaylistDetailPage> createState() =>
-      _PlaylistDetailPageState();
+  ConsumerState<PlaylistDetailPage> createState() => _PlaylistDetailPageState();
 }
 
 class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   static const int _pageSize = 30;
 
   List<Song> _songs = [];
+
   /// 歌单全量曲目 ID（第一次 playlistDetail 即返回），用于分页索引。
   List<int> _allTrackIds = [];
+
   /// 已加载的曲目 ID，防止 _fetchPage 和 _fetchMore 重叠时重复添加。
   final Set<int> _loadedIds = {};
   String _creator = '';
@@ -66,7 +67,18 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     }).toList();
   }
 
-  int _originIndex(Song s) => _songs.indexOf(s) + 1;
+  /// songId → 在全量 [_songs] 中的原始序号（1-based）。
+  /// 避免每次构建 SongTile 时 O(n) indexOf 扫描。
+  final Map<int, int> _songIdToIndex = {};
+
+  void _rebuildIndexMap() {
+    _songIdToIndex.clear();
+    for (var i = 0; i < _songs.length; i++) {
+      _songIdToIndex[_songs[i].id] = i + 1;
+    }
+  }
+
+  int _originIndex(Song s) => _songIdToIndex[s.id] ?? 0;
 
   @override
   void initState() {
@@ -87,7 +99,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   /// 首屏：playlistDetail 拉取全量歌曲（n=1000），避免播放队列只含部分歌曲。
   Future<void> _loadFirstPage() async {
     try {
-      final res = await BujuanMusicManager().playlistDetail(
+      final res = await MusicManager().playlistDetail(
         id: widget.playlistId,
         n: 1000,
       );
@@ -113,10 +125,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         ];
       }
 
-      _songs = [
-        for (final t in (pl.tracks ?? [])) Song.fromPlaylistTrack(t),
-      ];
+      _songs = [for (final t in (pl.tracks ?? [])) Song.fromPlaylistTrack(t)];
       _loadedIds.addAll(_songs.map((s) => s.id));
+      _rebuildIndexMap();
 
       _exhausted = _songs.length >= _totalCount;
     } catch (_) {}
@@ -145,7 +156,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         continue;
       }
       try {
-        final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+        final detail = await MusicManager().songDetail(ids: batchIds);
         final batch = [
           for (final s in (detail?.songs ?? []))
             if (s.id > 0) Song.fromSongDetail(s),
@@ -153,6 +164,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         if (batch.isEmpty) break;
         _loadedIds.addAll(batch.map((s) => s.id));
         _songs.addAll(batch);
+        _rebuildIndexMap();
         if (mounted) setState(() {}); // 增量刷新列表
       } catch (_) {
         break; // 网络异常则停止，保留已加载部分
@@ -189,13 +201,14 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       return;
     }
     try {
-      final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+      final detail = await MusicManager().songDetail(ids: batchIds);
       final batch = [
         for (final s in (detail?.songs ?? []))
           if (s.id > 0) Song.fromSongDetail(s),
       ];
       _loadedIds.addAll(batch.map((s) => s.id));
       _songs.addAll(batch);
+      _rebuildIndexMap();
       _exhausted = _songs.length >= _totalCount;
     } catch (_) {}
   }
@@ -206,7 +219,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     final batchIds = _allTrackIds.sublist(offset, end);
     if (batchIds.isEmpty) return [];
     try {
-      final detail = await BujuanMusicManager().songDetail(ids: batchIds);
+      final detail = await MusicManager().songDetail(ids: batchIds);
       return [
         for (final s in (detail?.songs ?? []))
           if (s.id > 0) Song.fromSongDetail(s),
@@ -253,25 +266,31 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                               focusNode: _searchFocus,
                               autofocus: true,
                               style: TextStyle(
-                                  fontSize: 14,
-                                  color: colors.textPrimary),
+                                fontSize: 14,
+                                color: colors.textPrimary,
+                              ),
                               decoration: InputDecoration(
                                 hintText: '搜索歌名或歌手…',
                                 hintStyle: TextStyle(
-                                    fontSize: 13,
-                                    color: colors.textSecondary),
-                                prefixIcon: Icon(Icons.search,
-                                    size: 18,
-                                    color: colors.textSecondary),
+                                  fontSize: 13,
+                                  color: colors.textSecondary,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.search,
+                                  size: 18,
+                                  color: colors.textSecondary,
+                                ),
                                 suffixIcon: _query.isNotEmpty
                                     ? GestureDetector(
                                         onTap: () {
                                           _searchCtrl.clear();
                                           setState(() => _query = '');
                                         },
-                                        child: Icon(Icons.clear,
-                                            size: 18,
-                                            color: colors.textSecondary),
+                                        child: Icon(
+                                          Icons.clear,
+                                          size: 18,
+                                          color: colors.textSecondary,
+                                        ),
                                       )
                                     : null,
                                 filled: true,
@@ -281,20 +300,25 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                                   borderSide: BorderSide.none,
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 8, horizontal: 10),
+                                  vertical: 8,
+                                  horizontal: 10,
+                                ),
                               ),
                               onChanged: (v) => setState(() => _query = v),
                             ),
                           )
-                        : Text(widget.title,
+                        : Text(
+                            widget.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 14)),
+                            style: const TextStyle(fontSize: 14),
+                          ),
                     actions: [
                       IconButton(
                         icon: Icon(
-                            _searching ? Icons.close : Icons.search,
-                            size: 22),
+                          _searching ? Icons.close : Icons.search,
+                          size: 22,
+                        ),
                         onPressed: () {
                           if (_searching) {
                             _closeSearch();
@@ -316,9 +340,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                           Container(color: Colors.black45),
                           Center(
                             child: CoverImage(
-                                url: '${widget.coverUrl}?param=300y300',
-                                size: 120,
-                                radius: 8),
+                              url: '${widget.coverUrl}?param=300y300',
+                              size: 120,
+                              radius: 8,
+                            ),
                           ),
                         ],
                       ),
@@ -328,42 +353,58 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: Text('by $_creator',
-                            style: TextStyle(
-                                color: colors.textSecondary,
-                                fontSize: 12)),
+                        child: Text(
+                          'by $_creator',
+                          style: TextStyle(
+                            color: colors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                     ),
                   SliverToBoxAdapter(
                     child: InkWell(
                       onTap: _songs.isEmpty
                           ? null
-                          : () => ref.read(playerProvider.notifier).play(
-                                _songs.first,
-                                queue: _songs,
-                                fetchMore: _exhausted ? null : _fetchMore,
-                                totalCount: _totalCount,
-                              ),
+                          : () => ref
+                                .read(playerProvider.notifier)
+                                .play(
+                                  _songs.first,
+                                  queue: _songs,
+                                  fetchMore: _exhausted ? null : _fetchMore,
+                                  totalCount: _totalCount,
+                                  playlistId: widget.playlistId,
+                                ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           children: [
-                            Icon(Icons.play_circle_fill,
-                                color: colors.primary, size: 28),
+                            Icon(
+                              Icons.play_circle_fill,
+                              color: colors.primary,
+                              size: 28,
+                            ),
                             const SizedBox(width: 8),
-                            Text('播放全部',
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600)),
+                            Text(
+                              '播放全部',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(width: 6),
                             Text(
-                                _query.isEmpty
-                                    ? '($_totalCount)'
-                                    : '(${list.length}/$_totalCount)',
-                                style: TextStyle(
-                                    color: colors.textSecondary,
-                                    fontSize: 13)),
+                              _query.isEmpty
+                                  ? '($_totalCount)'
+                                  : '(${list.length}/$_totalCount)',
+                              style: TextStyle(
+                                color: colors.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -376,9 +417,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                   else if (list.isEmpty && !_initialLoading)
                     SliverFillRemaining(
                       child: Center(
-                        child: Text('未找到匹配歌曲',
-                            style:
-                                TextStyle(color: colors.textSecondary)),
+                        child: Text(
+                          '未找到匹配歌曲',
+                          style: TextStyle(color: colors.textSecondary),
+                        ),
                       ),
                     )
                   else ...[
@@ -390,6 +432,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                           index: i,
                           showCover: false,
                           label: _originIndex(list[i]),
+                          playlistId: widget.playlistId,
                         ),
                         childCount: list.length,
                         addAutomaticKeepAlives: false,
@@ -404,8 +447,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                             child: SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           ),
                         ),

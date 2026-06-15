@@ -16,7 +16,7 @@ mixin TopApi {
     total = true,
   }) async {
     final data = {'limit': limit, 'offset': offset, 'total': total};
-    return await BujuanMusicManager().post<TopArtistEntity>(
+    return await MusicManager().post<TopArtistEntity>(
       url: Api.topArtist,
       options: createOption(),
       data: data,

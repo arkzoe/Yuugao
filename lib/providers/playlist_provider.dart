@@ -40,16 +40,13 @@ class PlaylistNotifier extends Notifier<PlaylistState> {
   @override
   PlaylistState build() => const PlaylistState();
 
-  late final _api = BujuanMusicManager();
+  late final _api = MusicManager();
 
   Future<void> fetchAll() async {
     final uid = ref.read(userProvider).uid;
     if (uid == null) return;
     state = state.copyWith(loading: true);
-    await Future.wait([
-      _fetchPlaylists(uid),
-      _fetchLikedSongs(uid),
-    ]);
+    await Future.wait([_fetchPlaylists(uid), _fetchLikedSongs(uid)]);
     state = state.copyWith(loading: false);
   }
 
@@ -135,5 +132,6 @@ class PlaylistNotifier extends Notifier<PlaylistState> {
   void clear() => state = const PlaylistState();
 }
 
-final playlistProvider =
-    NotifierProvider<PlaylistNotifier, PlaylistState>(PlaylistNotifier.new);
+final playlistProvider = NotifierProvider<PlaylistNotifier, PlaylistState>(
+  PlaylistNotifier.new,
+);

@@ -19,7 +19,7 @@ import 'cookie_holder.dart';
 import '../api/user/user_api.dart';
 import 'music_interceptors.dart';
 
-class BujuanMusicManager
+class MusicManager
     with
         UserApi,
         RecommendApi,
@@ -30,16 +30,16 @@ class BujuanMusicManager
         MvApi,
         SearchApi,
         FmApi {
-  static final BujuanMusicManager _instance = BujuanMusicManager._internal();
+  static final MusicManager _instance = MusicManager._internal();
 
-  factory BujuanMusicManager() => _instance;
+  factory MusicManager() => _instance;
 
   late Dio _dio;
 
   static late CookieJar cookieJar;
   bool _debug = false;
 
-  BujuanMusicManager._internal();
+  MusicManager._internal();
 
   Future<void> init({required String cookiePath, bool debug = false}) async {
     _debug = debug;

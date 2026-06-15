@@ -2,6 +2,7 @@ import 'package:yuugao/CloudMusic/api/api.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/catalogue_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/create_playlist_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/high_quality_tags_entity.dart';
+import 'package:yuugao/CloudMusic/api/playlist/entity/intelligence_list_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/playlist_detail_entity.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 
@@ -11,7 +12,7 @@ mixin PlaylistApi {
   /// 歌单分类
   ///
   Future<CatalogueEntity?> playlistCatalogue() async {
-    return await BujuanMusicManager().post<CatalogueEntity>(
+    return await MusicManager().post<CatalogueEntity>(
       url: Api.playlistCatalogue,
     );
   }
@@ -27,7 +28,7 @@ mixin PlaylistApi {
     String type = 'NORMAL',
   }) async {
     final data = {'name': name, 'privacy': privacy, 'type': type};
-    return await BujuanMusicManager().post<CreatePlaylistEntity>(
+    return await MusicManager().post<CreatePlaylistEntity>(
       url: Api.createPlaylist,
       data: data,
     );
@@ -37,7 +38,7 @@ mixin PlaylistApi {
   ///
   /// [ids]要删除的歌单id（必选）
   Future<StringEntity?> removePlaylist({required List<String> ids}) async {
-    return await BujuanMusicManager().post<StringEntity>(
+    return await MusicManager().post<StringEntity>(
       url: Api.removePlaylist,
       data: {'ids': ids},
     );
@@ -50,7 +51,7 @@ mixin PlaylistApi {
     required int id,
     required String desc,
   }) async {
-    return await BujuanMusicManager().post<StringEntity>(
+    return await MusicManager().post<StringEntity>(
       url: Api.updatePlaylistDesc,
       data: {'id': id, 'desc': desc},
     );
@@ -76,7 +77,7 @@ mixin PlaylistApi {
       // ignore: use_null_aware_elements
       if (offset != null) 'offset': offset,
     };
-    return await BujuanMusicManager().post<PlaylistDetailEntity>(
+    return await MusicManager().post<PlaylistDetailEntity>(
       url: dynamic ? Api.playlistDetailDynamic : Api.playlistDetail,
       data: data,
     );
@@ -95,14 +96,31 @@ mixin PlaylistApi {
   //     'scene': 'playlist_head',
   //     'newStyle': newStyle,
   //   };
-  //   return await BujuanMusicManager().post(url: Api.recommendByPlaylist, data: data);
+  //   return await MusicManager().post(url: Api.recommendByPlaylist, data: data);
   // }
 
   /// 精品歌单tags
   ///
   Future<HighQualityTagsEntity?> highQualityTags() async {
-    return await BujuanMusicManager().post<HighQualityTagsEntity>(
+    return await MusicManager().post<HighQualityTagsEntity>(
       url: Api.highQualityTags,
+    );
+  }
+
+  /// 心动模式 / 智能播放列表
+  ///
+  /// [id] 歌曲 id（必选），用于生成智能列表的种子歌曲
+  /// [pid] 歌单 id（必选）
+  /// [sid] 开始播放的歌曲 id（可选）
+  Future<IntelligenceListEntity?> playmodeIntelligenceList({
+    required int id,
+    required int pid,
+    int? sid,
+  }) async {
+    final data = <String, dynamic>{'id': id, 'pid': pid, 'sid': sid};
+    return await MusicManager().post<IntelligenceListEntity>(
+      url: Api.playmodeIntelligenceList,
+      data: data,
     );
   }
 

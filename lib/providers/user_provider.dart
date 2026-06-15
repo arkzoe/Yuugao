@@ -29,8 +29,7 @@ class UserState {
   /// 当前登录用户 uid（优先 userInfo，其次登录返回的 profile）
   int? get uid => userProfile?.userId ?? profile?.userId;
 
-  String get nickname =>
-      userProfile?.nickname ?? profile?.nickname ?? '游客';
+  String get nickname => userProfile?.nickname ?? profile?.nickname ?? '游客';
 
   String get avatarUrl {
     final raw = userProfile?.avatarUrl ?? profile?.avatarUrl ?? '';
@@ -60,7 +59,7 @@ class UserNotifier extends Notifier<UserState> {
   @override
   UserState build() => const UserState();
 
-  late final _api = BujuanMusicManager();
+  late final _api = MusicManager();
 
   /// 启动时检查 cookie 是否仍有效（已持久化登录态时自动恢复）。
   Future<void> restore() async {
@@ -168,9 +167,11 @@ class UserNotifier extends Notifier<UserState> {
       final value = trimmed.substring(eq + 1).trim();
       if (name.isNotEmpty && value.isNotEmpty) {
         // 显式设置 domain 和 path，避免依赖 cookie_jar 对 null 的默认处理。
-        cookies.add(Cookie(name, value)
-          ..domain = Uri.parse(defaultUrl).host
-          ..path = '/');
+        cookies.add(
+          Cookie(name, value)
+            ..domain = Uri.parse(defaultUrl).host
+            ..path = '/',
+        );
       }
     }
     if (cookies.isNotEmpty) {
@@ -200,5 +201,6 @@ class UserNotifier extends Notifier<UserState> {
   }
 }
 
-final userProvider =
-    NotifierProvider<UserNotifier, UserState>(UserNotifier.new);
+final userProvider = NotifierProvider<UserNotifier, UserState>(
+  UserNotifier.new,
+);

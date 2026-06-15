@@ -39,7 +39,7 @@ mixin UserApi {
       'https': https,
     };
 
-    return BujuanMusicManager().post<LoginEntity>(
+    return MusicManager().post<LoginEntity>(
       url: Api.loginCellPhone,
       options: createOption(),
       data: data,
@@ -55,7 +55,7 @@ mixin UserApi {
     String ctcode = '86',
   }) async {
     final data = {'cellphone': phone, 'ctcode': ctcode};
-    return await BujuanMusicManager().post<BoolEntity>(
+    return await MusicManager().post<BoolEntity>(
       url: Api.sendSmsCode,
       options: createOption(),
       data: data,
@@ -73,7 +73,7 @@ mixin UserApi {
     String ctcode = '86',
   }) async {
     final data = {'cellphone': phone, 'captcha': captcha, 'ctcode': ctcode};
-    return await BujuanMusicManager().post<BoolEntity>(
+    return await MusicManager().post<BoolEntity>(
       url: Api.verifySmsCode,
       options: createOption(),
       data: data,
@@ -85,7 +85,7 @@ mixin UserApi {
   /// [type] 类型（可选，默认 3）
   Future<QrcodeKeyEntity?> qrCodeKey({int type = 1}) async {
     final data = {'type': type, 'timestamp': '${DateTime.now()}'};
-    return await BujuanMusicManager().post<QrcodeKeyEntity>(
+    return await MusicManager().post<QrcodeKeyEntity>(
       url: Api.qrCodeKey,
       options: createOption(encryptType: EncryptType.weApi),
       data: data,
@@ -109,7 +109,7 @@ mixin UserApi {
     int type = 1,
   }) async {
     final data = {'key': key, 'type': type, 'timestamp': '${DateTime.now()}'};
-    return await BujuanMusicManager().post<QrCheckEntity>(
+    return await MusicManager().post<QrCheckEntity>(
       url: Api.checkQrCode,
       options: createOption(encryptType: EncryptType.weApi),
       data: data,
@@ -118,7 +118,7 @@ mixin UserApi {
 
   ///用户信息（需登录）
   Future<UserInfoEntity?> userInfo() async {
-    return await BujuanMusicManager().post<UserInfoEntity>(
+    return await MusicManager().post<UserInfoEntity>(
       url: Api.userInfo,
       options: createOption(encryptType: EncryptType.weApi),
       data: {},
@@ -142,7 +142,7 @@ mixin UserApi {
       'offset': offset,
       'includeVideo': includeVideo,
     };
-    return await BujuanMusicManager().post<UserPlaylistEntity>(
+    return await MusicManager().post<UserPlaylistEntity>(
       url: Api.userPlaylist,
       options: createOption(),
       data: data,
@@ -165,7 +165,7 @@ mixin UserApi {
       // ignore: use_null_aware_elements
       if (offset != null) 'offset': offset,
     };
-    return await BujuanMusicManager().post<LikeListEntity>(
+    return await MusicManager().post<LikeListEntity>(
       url: Api.userLikeList,
       options: createOption(),
       data: data,
@@ -174,7 +174,7 @@ mixin UserApi {
 
   /// 退出登录
   Future<BoolEntity?> logout() async {
-    return await BujuanMusicManager().post<BoolEntity>(
+    return await MusicManager().post<BoolEntity>(
       url: Api.logout,
       options: createOption(),
       data: {},
@@ -182,7 +182,7 @@ mixin UserApi {
   }
 
   Future<dynamic> homepageDragonBall() async {
-    return await BujuanMusicManager().post(
+    return await MusicManager().post(
       url: Api.homepageDragonBall,
       options: createOption(),
       data: {},

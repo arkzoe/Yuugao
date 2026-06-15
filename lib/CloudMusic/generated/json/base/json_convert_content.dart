@@ -32,6 +32,7 @@ import 'package:yuugao/CloudMusic/api/user/entity/string_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_info_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_playlist_entity.dart';
 import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
+import 'package:yuugao/CloudMusic/api/playlist/entity/intelligence_list_entity.dart';
 
 JsonConvert jsonConvert = JsonConvert();
 
@@ -1285,6 +1286,24 @@ class JsonConvert {
           as M;
     }
 
+    // ── 心动模式 ──
+    if (<IntelligenceListEntity>[] is M) {
+      return data
+              .map<IntelligenceListEntity>(
+                (Map<String, dynamic> e) => IntelligenceListEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<IntelligenceListSongItem>[] is M) {
+      return data
+              .map<IntelligenceListSongItem>(
+                (Map<String, dynamic> e) => IntelligenceListSongItem.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+
     debugPrint("$M not found");
 
     return null;
@@ -1494,6 +1513,8 @@ class JsonConvertClassCollection {
     (SearchAlbumItemArtist).toString(): SearchAlbumItemArtist.fromJson,
     (SearchPlaylistItem).toString(): SearchPlaylistItem.fromJson,
     (SearchPlaylistItemCreator).toString(): SearchPlaylistItemCreator.fromJson,
+    (IntelligenceListEntity).toString(): IntelligenceListEntity.fromJson,
+    (IntelligenceListSongItem).toString(): IntelligenceListSongItem.fromJson,
   };
 
   bool containsKey(String type) {

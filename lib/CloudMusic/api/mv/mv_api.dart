@@ -8,7 +8,7 @@ mixin MvApi {
   ///
   /// [id] mvId（必选）
   Future<MvUrlEntity?> mvUrl({required int id, int? resolution = 1080}) async {
-    return await BujuanMusicManager().post<MvUrlEntity>(
+    return await MusicManager().post<MvUrlEntity>(
       url: Api.mvUrl,
       data: {'id': id, 'r': resolution},
     );

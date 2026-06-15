@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +11,7 @@ import 'package:yuugao/services/audio_service.dart';
 // ignore: unused_import — SongFetcher 在 play() 签名中使用
 export 'package:yuugao/services/audio_service.dart' show SongFetcher;
 
-enum PlayMode { sequential, shuffle, repeatOne }
+enum PlayMode { sequential, shuffle, repeatOne, heartbeat }
 
 class PlayerState {
   final List<Song> queue;
@@ -24,6 +23,9 @@ class PlayerState {
   final bool buffering;
   final bool isFmMode;
 
+  /// 当前队列源自的歌单 ID（用于心动模式）。
+  final int? playlistId;
+
   const PlayerState({
     this.queue = const [],
     this.currentIndex = -1,
@@ -33,12 +35,12 @@ class PlayerState {
     this.duration = Duration.zero,
     this.buffering = false,
     this.isFmMode = false,
+    this.playlistId,
   });
 
-  Song? get current =>
-      (currentIndex >= 0 && currentIndex < queue.length)
-          ? queue[currentIndex]
-          : null;
+  Song? get current => (currentIndex >= 0 && currentIndex < queue.length)
+      ? queue[currentIndex]
+      : null;
 
   bool get hasSong => current != null;
 
@@ -57,6 +59,7 @@ class PlayerState {
     Duration? duration,
     bool? buffering,
     bool? isFmMode,
+    int? playlistId,
   }) {
     return PlayerState(
       queue: queue ?? this.queue,
@@ -67,6 +70,7 @@ class PlayerState {
       duration: duration ?? this.duration,
       buffering: buffering ?? this.buffering,
       isFmMode: isFmMode ?? this.isFmMode,
+      playlistId: playlistId ?? this.playlistId,
     );
   }
 }
@@ -84,9 +88,6 @@ class PlayerNotifier extends Notifier<PlayerState> {
   /// 防止 just_audio 跃迁期间发射的中间态（0、null、旧 index）覆盖 UI。
   int? _intendedIndex;
 
-  /// 持久化防抖计时器
-  Timer? _persistTimer;
-
   // ═══ 持久化 ═══
 
   static const _kQueueJson = 'player_queue_json';
@@ -95,20 +96,38 @@ class PlayerNotifier extends Notifier<PlayerState> {
   static const _kMode = 'player_mode';
   static const _kFmMode = 'player_fm_mode';
 
-  /// 将当前播放状态保存到 SharedPreferences（防抖 2 秒）。
-  Future<void> _persistState() async {
-    _persistTimer?.cancel();
-    _persistTimer = Timer(const Duration(seconds: 2), () async {
-      final prefs = await SharedPreferences.getInstance();
-      final s = state;
-      await prefs.setString(
+  /// 上次持久化的毫秒时间戳（用于位置流的节流）。
+  int _lastPersistMs = 0;
+
+  /// 位置流的最小持久化间隔（毫秒）。
+  ///
+  /// positionStream 每秒约触发 5 次。若每次触发都写 SharedPreferences，
+  /// 会有大量无效 I/O。5 秒间隔意味着每个间隔写一次，其余调用零开销返回。
+  /// 重要事件（切歌、队列变更、模式切换）通过 [immediate] 跳过节流。
+  static const int _persistThrottleMs = 5000;
+
+  /// 将当前播放状态持久化到 SharedPreferences。
+  ///
+  /// [immediate] 为 true 时跳过节流（用于队列/模式变更等低频关键事件）。
+  /// 位置流调用时 [immediate] 为 false，受 [_persistThrottleMs] 节流。
+  void _persistState({bool immediate = false}) {
+    if (!immediate) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastPersistMs < _persistThrottleMs) return;
+      _lastPersistMs = now;
+    }
+    // 捕获当前状态快照，fire-and-forget 写 SharedPreferences，
+    // 不 await —— 避免阻塞事件循环。
+    final s = state;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString(
         _kQueueJson,
         jsonEncode(s.queue.map((song) => song.id).toList()),
       );
-      await prefs.setInt(_kIndex, s.currentIndex);
-      await prefs.setInt(_kPositionMs, s.position.inMilliseconds);
-      await prefs.setString(_kMode, s.mode.name);
-      await prefs.setBool(_kFmMode, s.isFmMode);
+      prefs.setInt(_kIndex, s.currentIndex);
+      prefs.setInt(_kPositionMs, s.position.inMilliseconds);
+      prefs.setString(_kMode, s.mode.name);
+      prefs.setBool(_kFmMode, s.isFmMode);
     });
   }
 
@@ -136,7 +155,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     // 通过 songDetail 还原 Song 对象，然后恢复播放。
     // 容错：部分歌曲下架仍恢复剩余队列，不全丢。
     try {
-      final detail = await BujuanMusicManager().songDetail(ids: ids);
+      final detail = await MusicManager().songDetail(ids: ids);
       final idToSong = <int, Song>{};
       for (final s in (detail?.songs ?? [])) {
         if (s.id != null && s.id! > 0) {
@@ -144,10 +163,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
         }
       }
       // 按原顺序过滤，保留仍存在的歌曲
-      final songs = ids
-          .map((id) => idToSong[id])
-          .whereType<Song>()
-          .toList();
+      final songs = ids.map((id) => idToSong[id]).whereType<Song>().toList();
       if (songs.isEmpty) return false;
 
       final clampedIndex = index.clamp(0, songs.length - 1);
@@ -185,7 +201,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (_intendedIndex != null && idx != _intendedIndex) return;
       _intendedIndex = null; // 匹配成功，后续事件正常接受
       state = state.copyWith(currentIndex: idx);
-      _persistState();
+      _persistState(immediate: true);
     });
     _audio.playerStateStream.listen((ps) {
       // 切歌时 seek / setAudioSources 内部会短暂发射 playing=false，
@@ -193,7 +209,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (_audio.indexSuppressed) return;
       state = state.copyWith(
         isPlaying: ps.playing,
-        buffering: ps.processingState == ProcessingState.loading ||
+        buffering:
+            ps.processingState == ProcessingState.loading ||
             ps.processingState == ProcessingState.buffering,
       );
     });
@@ -206,7 +223,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
             ? cur
             : state.currentIndex.clamp(0, q.length - 1);
         state = state.copyWith(queue: q, currentIndex: idx);
-        _persistState();
+        _persistState(immediate: true);
       }
     });
   }
@@ -220,12 +237,19 @@ class PlayerNotifier extends Notifier<PlayerState> {
     List<Song>? queue,
     SongFetcher? fetchMore,
     int totalCount = 0,
+    int? playlistId,
   }) async {
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
     _intendedIndex = index;
-    state = state.copyWith(queue: list, currentIndex: index);
+    state = state.copyWith(
+      queue: list,
+      currentIndex: index,
+      playlistId: playlistId,
+      isFmMode: false, // 播放歌单/搜索歌曲时退出 FM 模式
+      mode: state.mode == PlayMode.heartbeat ? PlayMode.sequential : state.mode,
+    );
     await _audio.setQueue(
       list,
       initialIndex: index,
@@ -237,7 +261,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     final cur = _audio.player.currentIndex;
     state = state.copyWith(
       queue: q,
-      currentIndex: (cur != null && cur >= 0 && cur < q.length) ? cur : state.currentIndex,
+      currentIndex: (cur != null && cur >= 0 && cur < q.length)
+          ? cur
+          : state.currentIndex,
     );
   }
 
@@ -248,10 +274,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     // 必须等 _audio.next() 完成再同步状态，否则 UI 停留在第一首。
     if (state.isFmMode) {
       await _audio.next();
-      state = state.copyWith(
-        queue: _audio.queue,
-        currentIndex: 0,
-      );
+      state = state.copyWith(queue: _audio.queue, currentIndex: 0);
       return;
     }
     final nxt = state.currentIndex + 1;
@@ -298,7 +321,27 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   Future<void> setMode(PlayMode mode) async {
+    // 心动模式：先调用 API 生成智能列表，成功后再设置播放器
+    if (mode == PlayMode.heartbeat) {
+      final ok = await _startHeartbeat();
+      if (!ok) {
+        // 不可用（无歌单上下文 / API 失败），跳过该模式继续到顺序播放
+        state = state.copyWith(mode: PlayMode.sequential);
+        _audio.setPlayMode(true);
+        await _audio.setShuffle(false);
+        await _audio.setLoopMode(LoopMode.all);
+        _persistState(immediate: true);
+        return;
+      }
+      // _startHeartbeat 内部已完成 setQueue，只需设置播放器参数
+      _audio.setPlayMode(true);
+      await _audio.setShuffle(false);
+      await _audio.setLoopMode(LoopMode.all);
+      _persistState(immediate: true);
+      return;
+    }
     state = state.copyWith(mode: mode);
+    // 心动模式视为顺序播放（预下载策略）。
     _audio.setPlayMode(mode == PlayMode.sequential);
     switch (mode) {
       case PlayMode.sequential:
@@ -313,13 +356,17 @@ class PlayerNotifier extends Notifier<PlayerState> {
         await _audio.setShuffle(false);
         await _audio.setLoopMode(LoopMode.one);
         break;
+      case PlayMode.heartbeat:
+        // unreachable — handled above
+        break;
     }
-    _persistState(); // 模式变更立即持久化，不等进度触发
+    _persistState(immediate: true); // 模式变更立即持久化，不等进度触发
   }
 
   /// 循环切换播放模式
   Future<void> cycleMode() {
-    final next = PlayMode.values[(state.mode.index + 1) % PlayMode.values.length];
+    final next =
+        PlayMode.values[(state.mode.index + 1) % PlayMode.values.length];
     return setMode(next);
   }
 
@@ -341,21 +388,59 @@ class PlayerNotifier extends Notifier<PlayerState> {
   /// FM 切到下一首。
   Future<void> nextFm() async {
     await _audio.nextFm();
-    state = state.copyWith(
-      queue: _audio.queue,
-      currentIndex: 0,
-    );
+    state = state.copyWith(queue: _audio.queue, currentIndex: 0);
   }
 
   /// FM 垃圾桶（跳过 + 标记不喜欢）。
   Future<void> trashFm() async {
     await _audio.trashFm();
-    state = state.copyWith(
-      queue: _audio.queue,
-      currentIndex: 0,
-    );
+    state = state.copyWith(queue: _audio.queue, currentIndex: 0);
+  }
+
+  // ═══ 心动模式 ═══
+
+  /// 启动心动模式：调用智能播放列表 API，替换当前队列。
+  Future<bool> _startHeartbeat() async {
+    final song = state.current;
+    final pid = state.playlistId;
+    if (song == null || pid == null) return false;
+
+    try {
+      final res = await MusicManager().playmodeIntelligenceList(
+        id: song.id,
+        pid: pid,
+        sid: song.id,
+      );
+      final items = res?.data;
+      if (items == null || items.isEmpty) return false;
+
+      // 提取 ID → songDetail 获取完整信息
+      final ids = items.map((e) => e.id ?? 0).where((id) => id > 0).toList();
+      if (ids.isEmpty) return false;
+
+      final detail = await MusicManager().songDetail(ids: ids);
+      final songs = (detail?.songs ?? [])
+          .map((s) => Song.fromSongDetail(s))
+          .where((s) => s.id > 0)
+          .toList();
+      if (songs.isEmpty) return false;
+
+      // 替换队列为智能播放列表
+      state = state.copyWith(
+        queue: songs,
+        currentIndex: 0,
+        mode: PlayMode.heartbeat,
+      );
+      await _audio.setQueue(songs, initialIndex: 0);
+      // setQueue 后同步实际队列
+      state = state.copyWith(queue: _audio.queue, currentIndex: 0);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }
 
-final playerProvider =
-    NotifierProvider<PlayerNotifier, PlayerState>(PlayerNotifier.new);
+final playerProvider = NotifierProvider<PlayerNotifier, PlayerState>(
+  PlayerNotifier.new,
+);

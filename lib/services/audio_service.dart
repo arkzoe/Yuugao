@@ -393,8 +393,7 @@ class AudioService {
     // 优先 chunk 移到最前
     var prio = 0;
     for (var c = 0; c < chunks.length; c++) {
-      if (priorityIndex >= chunks[c].start &&
-          priorityIndex < chunks[c].end) {
+      if (priorityIndex >= chunks[c].start && priorityIndex < chunks[c].end) {
         prio = c;
         break;
       }
@@ -428,16 +427,14 @@ class AudioService {
       ids.add(songs[i].id.toString());
     }
 
-    final res = await BujuanMusicManager().songUrl(
-      ids: ids,
-      level: _effectiveLevel,
-    );
+    final res = await MusicManager().songUrl(ids: ids, level: _effectiveLevel);
     final data = res?.data ?? [];
 
     // 网络自适应降级：exhigh 返回大面积空结果时降级到 standard
     if (_effectiveLevel == 'exhigh') {
-      final validCount =
-          data.where((d) => d.url != null && d.url!.isNotEmpty).length;
+      final validCount = data
+          .where((d) => d.url != null && d.url!.isNotEmpty)
+          .length;
       if (validCount == 0 && ids.isNotEmpty) {
         _exhighEmptyChunks++;
         if (_exhighEmptyChunks >= _degradeThreshold) {
@@ -476,10 +473,12 @@ class AudioService {
   Future<void> _refreshUrls(List<int> songIds) async {
     if (songIds.isEmpty) return;
     final songs = songIds
-        .map((id) => _fullCandidates.cast<Song?>().firstWhere(
-              (s) => s?.id == id,
-              orElse: () => null,
-            ))
+        .map(
+          (id) => _fullCandidates.cast<Song?>().firstWhere(
+            (s) => s?.id == id,
+            orElse: () => null,
+          ),
+        )
         .whereType<Song>()
         .toList();
     if (songs.isEmpty) return;
@@ -508,7 +507,8 @@ class AudioService {
     var offset = from;
     var end = to;
 
-    while (offset < end || (_fetchMore != null && songs.length < _playlistTotal)) {
+    while (offset < end ||
+        (_fetchMore != null && songs.length < _playlistTotal)) {
       if (_generation != setGen || _expandGen != gen) return;
 
       // 若本地候选耗尽，尝试分页拉取
@@ -523,14 +523,13 @@ class AudioService {
       if (offset >= songs.length) break;
 
       // 取当前批次（1-2 chunk 并行解析）
-      final batchEnd = (offset + chunkSize * _expandConcurrency)
-          .clamp(0, songs.length);
+      final batchEnd = (offset + chunkSize * _expandConcurrency).clamp(
+        0,
+        songs.length,
+      );
       final batch = <({int start, int end})>[];
       for (var i = offset; i < batchEnd; i += chunkSize) {
-        batch.add((
-          start: i,
-          end: (i + chunkSize).clamp(0, batchEnd),
-        ));
+        batch.add((start: i, end: (i + chunkSize).clamp(0, batchEnd)));
       }
 
       // 并行解析该批次的 URL
@@ -567,7 +566,11 @@ class AudioService {
   /// 后台将目标歌曲之前的邻居逆序插入队首。
   ///
   /// 与 [_expandForward] 对称，逐批解析 URL 后倒序插入队列前面。
-  Future<void> _expandBackward(int setGen, List<Song> candidates, int beforeIdx) async {
+  Future<void> _expandBackward(
+    int setGen,
+    List<Song> candidates,
+    int beforeIdx,
+  ) async {
     final gen = _expandGen;
     const chunkSize = 30;
     var offset = 0;
@@ -580,10 +583,15 @@ class AudioService {
       if (batchSongs.isEmpty) break;
 
       // 过滤已解析的歌曲
-      final toResolve = batchSongs.where((s) => !_resolvedUrls.containsKey(s.id)).toList();
+      final toResolve = batchSongs
+          .where((s) => !_resolvedUrls.containsKey(s.id))
+          .toList();
       if (toResolve.isNotEmpty) {
         final ids = toResolve.map((s) => s.id.toString()).toList();
-        final res = await BujuanMusicManager().songUrl(ids: ids, level: _effectiveLevel);
+        final res = await MusicManager().songUrl(
+          ids: ids,
+          level: _effectiveLevel,
+        );
         final data = res?.data ?? [];
         final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         for (final d in data) {
@@ -646,9 +654,7 @@ class AudioService {
       album: song.album,
       // 网易云 CDN 需要 ?param= 参数绕过防盗链；
       // 否则 just_audio 加载通知栏封面时返回 403。
-      artUri: song.coverUrl.isEmpty
-          ? null
-          : Uri.tryParse(song.coverThumb(512)),
+      artUri: song.coverUrl.isEmpty ? null : Uri.tryParse(song.coverThumb(512)),
       duration: song.durationMs > 0 ? song.duration : null,
     );
 
@@ -695,8 +701,10 @@ class AudioService {
     final ids = data.map((d) => d.id ?? 0).where((id) => id > 0).toList();
     if (ids.isNotEmpty) {
       try {
-        final detail = await BujuanMusicManager().songDetail(ids: ids);
-        if (detail != null && detail.songs != null && detail.songs!.isNotEmpty) {
+        final detail = await MusicManager().songDetail(ids: ids);
+        if (detail != null &&
+            detail.songs != null &&
+            detail.songs!.isNotEmpty) {
           return detail.songs!
               .map((s) => Song.fromSongDetail(s))
               .where((s) => s.id > 0)
@@ -706,10 +714,7 @@ class AudioService {
     }
 
     // 回退：直接从 FM 原始数据构建（字段可能不完整但不阻塞播放）
-    return data
-        .map((d) => _songFromFmData(d))
-        .where((s) => s.id > 0)
-        .toList();
+    return data.map((d) => _songFromFmData(d)).where((s) => s.id > 0).toList();
   }
 
   /// 从 FM 原始实体构建 Song（兼容 ar/al 和 artists/album 两种命名）。
@@ -738,7 +743,7 @@ class AudioService {
     _fmLoading = true;
 
     try {
-      final res = await BujuanMusicManager().personalFm();
+      final res = await MusicManager().personalFm();
       final data = res?.data;
       if (data == null || data.isEmpty) return false;
 
@@ -823,7 +828,7 @@ class AudioService {
 
       if (next == null) {
         // 双缓冲不可用：重新拉取
-        final res = await BujuanMusicManager().personalFm();
+        final res = await MusicManager().personalFm();
         final data = res?.data;
         if (data == null || data.isEmpty) return false;
 
@@ -893,7 +898,7 @@ class AudioService {
     final currentId = _fmCurrentTrack?.id;
     final moved = await nextFm();
     if (moved && currentId != null) {
-      BujuanMusicManager().fmTrash(id: currentId);
+      MusicManager().fmTrash(id: currentId);
     }
   }
 
@@ -901,7 +906,7 @@ class AudioService {
   Future<void> _prefetchFmNext() async {
     if (_fmNextTrack != null) return;
     try {
-      final res = await BujuanMusicManager().personalFm();
+      final res = await MusicManager().personalFm();
       final data = res?.data;
       if (data == null || data.isEmpty) return;
 
@@ -957,8 +962,11 @@ class AudioService {
       final song = _queue[idx];
       final url = _resolvedUrls[song.id];
       if (url != null && url.isNotEmpty) {
-        CacheService.instance
-            .download(url, song.id, ext: _resolvedExt[song.id] ?? 'mp3');
+        CacheService.instance.download(
+          url,
+          song.id,
+          ext: _resolvedExt[song.id] ?? 'mp3',
+        );
       }
 
       // 预缓存下一首：仅顺序模式有效（shuffle 下一首随机，repeatOne 重复当前首）
