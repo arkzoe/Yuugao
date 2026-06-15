@@ -159,54 +159,14 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
                           color: colors.textPrimary),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
-                    if (isFm)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '私人 FM',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: colors.primary,
-                          ),
-                        ),
-                      ),
-                    if (isFm) const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            song?.name ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            song?.artist ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.share),
                       onPressed: song == null
                           ? null
                           : () => SharePlus.instance.share(ShareParams(
-                              text: '我在听「${song.name}」- ${song.artist}')),
+                              text: '我在听「${song.name}」- ${song.artist}\n'
+                                  'https://music.163.com/song?id=${song.id}')),
                     ),
                   ],
                 ),
