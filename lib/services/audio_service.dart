@@ -953,36 +953,34 @@ class AudioService {
   // 内部：边播边存 + 预下载
   // ═════════════════════════════════════════════════════════════
 
-  /// 当前歌曲播放时后台缓存本曲。
-  /// 顺序播放时额外预缓存下一首（切歌零延迟）；
-  /// 随机/单曲循环时仅缓存当前曲，避免无效预下载。
+  /// 当前歌曲播放时后台缓存本曲，并维持 10 首的前瞻缓存窗口。
+  ///
+  /// 策略：
+  /// - 每首歌切换时缓存当前曲
+  /// - 顺序/心动模式：每播放 5 首触发一次批处理，预缓存后 10 首
+  /// - 随机/单曲循环：仅缓存当前曲，避免无效预下载浪费带宽和磁盘
+  int _lastCacheBatch = -1;
+  static const int _cacheBatchInterval = 5; // 每播放 5 首触发一次
+  static const int _cacheAhead = 10; // 前瞻缓存窗口
+
   void _bindCaching() {
     player.currentIndexStream.listen((idx) {
       if (idx == null || idx < 0 || idx >= _queue.length) return;
-      final song = _queue[idx];
-      final url = _resolvedUrls[song.id];
-      if (url != null && url.isNotEmpty) {
-        CacheService.instance.download(
-          url,
-          song.id,
-          ext: _resolvedExt[song.id] ?? 'mp3',
-        );
-      }
 
-      // 预缓存下一首：仅顺序模式有效（shuffle 下一首随机，repeatOne 重复当前首）
-      if (_isSequential) {
-        final nextIdx = idx + 1;
-        if (nextIdx < _queue.length) {
-          final nextSong = _queue[nextIdx];
-          final nextUrl = _resolvedUrls[nextSong.id];
-          if (nextUrl != null && nextUrl.isNotEmpty) {
-            CacheService.instance.download(
-              nextUrl,
-              nextSong.id,
-              ext: _resolvedExt[nextSong.id] ?? 'mp3',
-            );
-          }
-        }
+      // 始终缓存当前正在播放的歌曲
+      _downloadSong(_queue[idx]);
+
+      // 前瞻缓存窗口：仅顺序/心动模式有效
+      if (!_isSequential) return;
+
+      final batch = (idx ~/ _cacheBatchInterval);
+      if (batch == _lastCacheBatch) return; // 本批次已处理
+      _lastCacheBatch = batch;
+
+      for (var i = idx + 1;
+          i < idx + 1 + _cacheAhead && i < _queue.length;
+          i++) {
+        _downloadSong(_queue[i]);
       }
 
       // ── 窗口边界预取 ──
@@ -1000,5 +998,17 @@ class AudioService {
         );
       }
     });
+  }
+
+  /// 提交一首歌的后台缓存任务。已缓存或正在下载的自动跳过。
+  void _downloadSong(Song song) {
+    final url = _resolvedUrls[song.id];
+    if (url != null && url.isNotEmpty) {
+      CacheService.instance.download(
+        url,
+        song.id,
+        ext: _resolvedExt[song.id] ?? 'mp3',
+      );
+    }
   }
 }
