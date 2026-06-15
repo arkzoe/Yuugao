@@ -109,15 +109,23 @@ mixin PlaylistApi {
 
   /// 心动模式 / 智能播放列表
   ///
-  /// [id] 歌曲 id（必选），用于生成智能列表的种子歌曲
-  /// [pid] 歌单 id（必选）
-  /// [sid] 开始播放的歌曲 id（可选）
+  /// [songId] 种子歌曲 id（必选）
+  /// [playlistId] 歌单 id（必选）
+  /// [startMusicId] 开始播放的歌曲 id（可选，默认同 songId）
+  /// [count] 返回歌曲数量（默认 30）
   Future<IntelligenceListEntity?> playmodeIntelligenceList({
-    required int id,
-    required int pid,
-    int? sid,
+    required int songId,
+    required int playlistId,
+    int? startMusicId,
+    int count = 30,
   }) async {
-    final data = <String, dynamic>{'id': id, 'pid': pid, 'sid': sid};
+    final data = <String, dynamic>{
+      'songId': songId,
+      'type': 'fromPlayOne',
+      'playlistId': playlistId,
+      'startMusicId': startMusicId ?? songId,
+      'count': count,
+    };
     return await MusicManager().post<IntelligenceListEntity>(
       url: Api.playmodeIntelligenceList,
       data: data,
