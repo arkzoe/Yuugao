@@ -106,7 +106,22 @@ class CacheService {
   }
 
   /// 缓存超过上限时，按最后修改时间从旧到新淘汰，直到回到上限以内。
+  ///
+  /// 使用 [_enforceLock] 防止多个下载并发触发重复淘汰；
+  /// 用 async [File.lastModified] 取代 [FileStat.statSync] 避免排序 I/O 阻塞事件循环。
+  bool _enforcing = false;
+
   Future<void> _enforceLimit() async {
+    if (_enforcing) return;
+    _enforcing = true;
+    try {
+      await _doEnforce();
+    } finally {
+      _enforcing = false;
+    }
+  }
+
+  Future<void> _doEnforce() async {
     if (!await _cacheDir.exists()) return;
     final files = <File>[];
     var total = 0;
@@ -118,8 +133,13 @@ class CacheService {
     }
     if (total <= _maxCacheBytes) return;
 
-    files.sort((a, b) =>
-        a.statSync().modified.compareTo(b.statSync().modified));
+    // 预取每文件的修改时间（async），避免排序比较器内 statSync 阻塞事件循环
+    final fileTime = <File, DateTime>{};
+    for (final f in files) {
+      fileTime[f] = await f.lastModified();
+    }
+    files.sort((a, b) => fileTime[a]!.compareTo(fileTime[b]!));
+
     // 反查 文件名 -> songId，便于同步清理索引
     final nameToId = {for (final e in _index.entries) e.value: e.key};
 
