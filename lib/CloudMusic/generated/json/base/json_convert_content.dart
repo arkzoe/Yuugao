@@ -33,6 +33,8 @@ import 'package:yuugao/CloudMusic/api/user/entity/user_info_entity.dart';
 import 'package:yuugao/CloudMusic/api/user/entity/user_playlist_entity.dart';
 import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/intelligence_list_entity.dart';
+import 'package:yuugao/CloudMusic/api/podcast/entity/dj_program_entity.dart';
+import 'package:yuugao/CloudMusic/api/podcast/entity/user_dj_entity.dart';
 
 JsonConvert jsonConvert = JsonConvert();
 
@@ -1304,6 +1306,72 @@ class JsonConvert {
           as M;
     }
 
+    // ── 播客 ──
+    if (<DjProgramEntity>[] is M) {
+      return data
+              .map<DjProgramEntity>(
+                (Map<String, dynamic> e) => DjProgramEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<DjProgramItem>[] is M) {
+      return data
+              .map<DjProgramItem>(
+                (Map<String, dynamic> e) => DjProgramItem.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<DjProgramMainSong>[] is M) {
+      return data
+              .map<DjProgramMainSong>(
+                (Map<String, dynamic> e) => DjProgramMainSong.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<DjProgramRadio>[] is M) {
+      return data
+              .map<DjProgramRadio>(
+                (Map<String, dynamic> e) => DjProgramRadio.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<DjProgramDj>[] is M) {
+      return data
+              .map<DjProgramDj>(
+                (Map<String, dynamic> e) => DjProgramDj.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<UserDjEntity>[] is M) {
+      return data
+              .map<UserDjEntity>(
+                (Map<String, dynamic> e) => UserDjEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<UserDjRadio>[] is M) {
+      return data
+              .map<UserDjRadio>(
+                (Map<String, dynamic> e) => UserDjRadio.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<UserDjRadioDj>[] is M) {
+      return data
+              .map<UserDjRadioDj>(
+                (Map<String, dynamic> e) => UserDjRadioDj.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+
     debugPrint("$M not found");
 
     return null;
@@ -1515,6 +1583,14 @@ class JsonConvertClassCollection {
     (SearchPlaylistItemCreator).toString(): SearchPlaylistItemCreator.fromJson,
     (IntelligenceListEntity).toString(): IntelligenceListEntity.fromJson,
     (IntelligenceListSongItem).toString(): IntelligenceListSongItem.fromJson,
+    (DjProgramEntity).toString(): DjProgramEntity.fromJson,
+    (DjProgramItem).toString(): DjProgramItem.fromJson,
+    (DjProgramMainSong).toString(): DjProgramMainSong.fromJson,
+    (DjProgramRadio).toString(): DjProgramRadio.fromJson,
+    (DjProgramDj).toString(): DjProgramDj.fromJson,
+    (UserDjEntity).toString(): UserDjEntity.fromJson,
+    (UserDjRadio).toString(): UserDjRadio.fromJson,
+    (UserDjRadioDj).toString(): UserDjRadioDj.fromJson,
   };
 
   bool containsKey(String type) {

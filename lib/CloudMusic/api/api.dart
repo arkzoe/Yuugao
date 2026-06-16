@@ -35,7 +35,8 @@ class Api {
   static const String recommendSongs = '/api/v3/discovery/recommend/songs';
 
   //每日推荐歌单
-  static const String recommendResource = '/api/v1/discovery/recommend/resource';
+  static const String recommendResource =
+      '/api/v1/discovery/recommend/resource';
 
   //对推荐不感兴趣
   static const String recommendDislike = '/api/v2/discovery/recommend/dislike';
@@ -129,4 +130,7 @@ class Api {
   static const String playmodeIntelligenceList =
       '/api/playmode/intelligence/list';
 
+  /// 播客
+  static const String userDj = '/api/djradio/get/subed';
+  static const String djProgramByRadio = '/api/dj/program/byradio';
 }
