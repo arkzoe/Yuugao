@@ -7,7 +7,7 @@ import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 
-/// 评论面板：热评置顶 + 最新评论。
+/// 评论面板：热评置顶 + 最新评论（分页加载）。
 class CommentPanel extends ConsumerStatefulWidget {
   const CommentPanel({super.key});
 
@@ -18,9 +18,15 @@ class CommentPanel extends ConsumerStatefulWidget {
 class _CommentPanelState extends ConsumerState<CommentPanel> {
   int _songId = -1;
   bool _loading = false;
+  bool _loadingMore = false;
   int _loadGen = 0; // 代次守卫，防快速切歌时旧结果覆盖新结果
   List<CommentItem> _hot = [];
   List<CommentItem> _latest = [];
+
+  /// 是否还有更多最新评论（由 API 的 more 字段指示）。
+  bool _hasMore = false;
+
+  static const _pageSize = 30;
 
   Future<void> _loadFor(int songId) async {
     if (songId == _songId) return;
@@ -28,19 +34,47 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
     final gen = ++_loadGen;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _hot = [];
       _latest = [];
+      _hasMore = false;
     });
     try {
-      final res = await MusicManager().songComments(id: songId, limit: 30);
+      final res = await MusicManager().songComments(
+        id: songId,
+        limit: _pageSize,
+        offset: 0,
+      );
       if (gen != _loadGen || !mounted) return;
       _hot = res?.hotComments ?? [];
       _latest = res?.comments ?? [];
+      _hasMore = res?.more ?? false;
     } catch (_) {
       if (gen != _loadGen || !mounted) return;
     }
     if (!mounted) return;
     if (gen == _loadGen) setState(() => _loading = false);
+  }
+
+  /// 加载更多最新评论。
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    final gen = _loadGen;
+    try {
+      final res = await MusicManager().songComments(
+        id: _songId,
+        limit: _pageSize,
+        offset: _latest.length,
+      );
+      if (gen != _loadGen || !mounted) return;
+      _latest.addAll(res?.comments ?? []);
+      _hasMore = res?.more ?? false;
+    } catch (_) {
+      if (gen != _loadGen || !mounted) return;
+    }
+    if (!mounted) return;
+    if (gen == _loadGen) setState(() => _loadingMore = false);
   }
 
   @override
@@ -64,7 +98,7 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
         if (_hot.isNotEmpty) ...[
           _sectionTitle('热门评论'),
@@ -73,6 +107,23 @@ class _CommentPanelState extends ConsumerState<CommentPanel> {
         if (_latest.isNotEmpty) ...[
           _sectionTitle('最新评论'),
           ..._latest.map((c) => _CommentRow(comment: c)),
+          // 加载更多按钮
+          if (_hasMore)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: _loadingMore
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : TextButton(
+                        onPressed: _loadMore,
+                        child: const Text('加载更多'),
+                      ),
+              ),
+            ),
         ],
       ],
     );
