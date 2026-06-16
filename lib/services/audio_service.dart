@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 import 'package:yuugao/models/song.dart';
+import 'package:yuugao/services/battery_optimization_service.dart'
+    show PlatformService;
 import 'package:yuugao/services/cache_service.dart';
 
 /// 分页歌单加载回调：给定 [offset] 和 [limit]，返回下一页歌曲列表。
@@ -38,10 +39,22 @@ class AudioService {
   /// 内存热缓存：最近使用的 AudioSource，用于快速切回。
   final LinkedHashMap<int, AudioSource> _hotCache = LinkedHashMap();
   static const int _hotCacheLimit = 5;
+
+  /// 是否已持有 WiFi 锁。
+  bool _wifiLockHeld = false;
+
   AudioService._() {
     _bindCaching();
   }
   static final AudioService instance = AudioService._();
+
+  /// 确保 WiFi 锁已获取（息屏后 WiFi 不会进入低功耗模式）。
+  void _ensureWifiLock() {
+    if (!_wifiLockHeld) {
+      _wifiLockHeld = true;
+      PlatformService.acquireWifiLock();
+    }
+  }
 
   final AudioPlayer player = AudioPlayer();
 
@@ -207,7 +220,10 @@ class AudioService {
       );
       indexSuppressed = false;
       if (gen != _generation) return;
-      if (autoPlay) player.play();
+      if (autoPlay) {
+        _ensureWifiLock();
+        player.play();
+      }
     } catch (_) {
       indexSuppressed = false;
       return;
@@ -244,6 +260,7 @@ class AudioService {
       }
     }
 
+    _ensureWifiLock();
     indexSuppressed = true;
     try {
       await player.seek(Duration.zero, index: index);
@@ -270,6 +287,7 @@ class AudioService {
           }
         }
       }
+      _ensureWifiLock();
       player.play();
     }
   }
@@ -369,6 +387,10 @@ class AudioService {
 
   void dispose() {
     _queueController.close();
+    if (_wifiLockHeld) {
+      PlatformService.releaseWifiLock();
+      _wifiLockHeld = false;
+    }
     player.dispose();
   }
 
@@ -641,27 +663,18 @@ class AudioService {
   /// 构建 [song] 的 AudioSource。
   ///
   /// 优先级：热缓存 > 本地缓存 > 流式 URL（过期检查）> null（不可播）。
+  /// 不再附加 MediaItem tag——通知栏元数据由 [YuugaoAudioHandler] 通过
+  /// audio_service 的 mediaItem 流独立管理。
   AudioSource? _buildSource(Song song) {
     // 第 0 优先：内存热缓存（最近 5 首切回零延迟）
     if (_hotCache.containsKey(song.id)) {
       return _hotCache[song.id];
     }
 
-    final tag = MediaItem(
-      id: song.id.toString(),
-      title: song.name,
-      artist: song.artist,
-      album: song.album,
-      // 网易云 CDN 需要 ?param= 参数绕过防盗链；
-      // 否则 just_audio 加载通知栏封面时返回 403。
-      artUri: song.coverUrl.isEmpty ? null : Uri.tryParse(song.coverThumb(512)),
-      duration: song.durationMs > 0 ? song.duration : null,
-    );
-
     // 第 1 优先：本地缓存
     final localPath = CacheService.instance.getLocalPath(song.id);
     if (localPath != null) {
-      final src = AudioSource.file(localPath, tag: tag);
+      final src = AudioSource.file(localPath);
       _addToHotCache(song.id, src);
       return src;
     }
@@ -669,7 +682,7 @@ class AudioService {
     // 第 2 优先：已解析的流式 URL（检查过期）
     final url = _resolvedUrls[song.id];
     if (url == null || url.isEmpty || _isUrlExpired(song.id)) return null;
-    final src = AudioSource.uri(Uri.parse(url), tag: tag);
+    final src = AudioSource.uri(Uri.parse(url));
     _addToHotCache(song.id, src);
     return src;
   }
@@ -787,6 +800,7 @@ class AudioService {
       try {
         await player.setAudioSources([src], initialIndex: 0);
         indexSuppressed = false;
+        _ensureWifiLock();
         player.play();
       } catch (_) {
         indexSuppressed = false;
@@ -874,6 +888,7 @@ class AudioService {
       try {
         await player.setAudioSources([src], initialIndex: 0);
         indexSuppressed = false;
+        _ensureWifiLock();
         player.play();
       } catch (_) {
         indexSuppressed = false;
