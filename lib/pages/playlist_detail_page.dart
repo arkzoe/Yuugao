@@ -36,6 +36,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   /// 已加载的曲目 ID，防止 _fetchPage 和 _fetchMore 重叠时重复添加。
   final Set<int> _loadedIds = {};
   String _creator = '';
+  bool _subscribed = false;
+  bool _subscribing = false;
   bool _initialLoading = true;
   bool _loadingMore = false;
   bool _bulkLoading = false; // 批量补齐全量歌曲中，禁止滚动分页
@@ -110,6 +112,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       }
 
       _creator = pl.creator?.nickname ?? '';
+      _subscribed = pl.subscribed ?? false;
       _totalCount = pl.trackCount ?? 0;
 
       // trackIds 为全量 ID（playlistDetail 始终返回全量）
@@ -227,6 +230,22 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     } catch (_) {
       return [];
     }
+  }
+
+  Future<void> _toggleSubscribe() async {
+    if (_subscribing) return;
+    final t = _subscribed ? 2 : 1;
+    setState(() => _subscribing = true);
+    try {
+      final res = await MusicManager().playlistSubscribe(
+        id: widget.playlistId,
+        t: t,
+      );
+      if (res?.code == 200 && mounted) {
+        setState(() => _subscribed = !_subscribed);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _subscribing = false);
   }
 
   void _closeSearch() {
@@ -352,13 +371,38 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                   if (_creator.isNotEmpty)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: Text(
-                          'by $_creator',
-                          style: TextStyle(
-                            color: colors.textSecondary,
-                            fontSize: 12,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
+                        child: Row(
+                          children: [
+                            Text(
+                              'by $_creator',
+                              style: TextStyle(
+                                color: colors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: Icon(
+                                _subscribed
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: _subscribed
+                                    ? colors.primary
+                                    : colors.textSecondary,
+                                size: 20,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              onPressed: _subscribing
+                                  ? null
+                                  : () => _toggleSubscribe(),
+                            ),
+                          ],
                         ),
                       ),
                     ),
