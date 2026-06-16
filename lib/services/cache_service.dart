@@ -23,7 +23,10 @@ class CacheService {
   /// 缓存上限：512MB。超过后按文件最后修改时间淘汰最旧的。
   static const int _maxCacheBytes = 512 * 1024 * 1024;
 
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(minutes: 10), // 歌曲文件可能很大
+  ));
   final Map<int, String> _index = {}; // songId -> 文件名
   final Set<int> _downloading = {};
 
