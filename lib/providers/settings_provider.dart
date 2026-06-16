@@ -50,18 +50,31 @@ final currentColorsProvider = Provider<ThemeColors>((ref) {
 });
 
 const _themePrefsKey = 'theme_mode';
+const _audioQualityKey = 'audio_quality';
+const _defaultAudioQuality = 'exhigh';
 
 class SettingsState {
   final ThemeMode themeMode;
   /// 睡眠定时器结束时刻（Unix 毫秒）；null 表示未启用
   final int? sleepTimerEndMs;
+  /// 播放音质标识（standard, exhigh, lossless, hires, jymaster 等）
+  final String audioQuality;
 
-  const SettingsState({this.themeMode = ThemeMode.light, this.sleepTimerEndMs});
+  const SettingsState({
+    this.themeMode = ThemeMode.light,
+    this.sleepTimerEndMs,
+    this.audioQuality = _defaultAudioQuality,
+  });
 
-  SettingsState copyWith({ThemeMode? themeMode, int? sleepTimerEndMs}) {
+  SettingsState copyWith({
+    ThemeMode? themeMode,
+    int? sleepTimerEndMs,
+    String? audioQuality,
+  }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
       sleepTimerEndMs: sleepTimerEndMs ?? this.sleepTimerEndMs,
+      audioQuality: audioQuality ?? this.audioQuality,
     );
   }
 }
@@ -74,6 +87,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     // 异步加载持久化的主题设置，初始默认浅色
     _loadPersistedTheme();
     _restoreSleepTimer();
+    _loadAudioQuality();
     return const SettingsState();
   }
 
@@ -86,13 +100,21 @@ class SettingsNotifier extends Notifier<SettingsState> {
     }
   }
 
+  /// 加载持久化的音质设置并应用到 AudioService。
+  Future<void> _loadAudioQuality() async {
+    final prefs = await SharedPreferences.getInstance();
+    final quality = prefs.getString(_audioQualityKey) ?? _defaultAudioQuality;
+    AudioService.instance.level = quality;
+    state = state.copyWith(audioQuality: quality);
+  }
+
   /// 恢复持久化的睡眠定时器（跨进程重启）
   Future<void> _restoreSleepTimer() async {
     final prefs = await SharedPreferences.getInstance();
     final endMs = prefs.getInt(_sleepTimerKey);
     if (endMs == null) return;
-    final remaining = DateTime.now().millisecondsSinceEpoch - endMs;
-    if (remaining >= 0) {
+    final remainingMs = endMs - DateTime.now().millisecondsSinceEpoch;
+    if (remainingMs <= 0) {
       // 已过期，清理
       await prefs.remove(_sleepTimerKey);
       return;
@@ -112,6 +134,14 @@ class SettingsNotifier extends Notifier<SettingsState> {
       _themePrefsKey,
       next == ThemeMode.dark ? 'dark' : 'light',
     );
+  }
+
+  /// 设置播放音质。持久化并同步到 AudioService。
+  Future<void> setAudioQuality(String level) async {
+    AudioService.instance.level = level;
+    state = state.copyWith(audioQuality: level);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_audioQualityKey, level);
   }
 
   // ═══ 睡眠定时器 ═══

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/settings_provider.dart';
-import 'package:yuugao/services/audio_service.dart';
 import 'package:yuugao/services/cache_service.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -60,7 +59,7 @@ class SettingsPage extends ConsumerWidget {
 
   void _showQualityDialog(BuildContext context, WidgetRef ref) {
     final colors = ref.read(currentColorsProvider);
-    final current = AudioService.instance.level; // 直接读 AudioService 的 _level
+    final current = ref.read(settingsProvider).audioQuality;
 
     showDialog(
       context: context,
@@ -71,7 +70,7 @@ class SettingsPage extends ConsumerWidget {
           for (final opt in _qualityOptions)
             SimpleDialogOption(
               onPressed: () {
-                AudioService.instance.level = opt.$1;
+                ref.read(settingsProvider.notifier).setAudioQuality(opt.$1);
                 Navigator.of(ctx).pop();
               },
               child: Row(
@@ -139,7 +138,9 @@ class SettingsPage extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.music_note),
             title: const Text('播放音质'),
-            subtitle: Text(_qualityLabel(AudioService.instance.level)),
+            subtitle: Text(_qualityLabel(
+              ref.watch(settingsProvider.select((s) => s.audioQuality)),
+            )),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showQualityDialog(context, ref),
           ),
