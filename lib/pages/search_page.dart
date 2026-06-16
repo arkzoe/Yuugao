@@ -5,6 +5,9 @@ import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/search/entity/search_entity.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/settings_provider.dart';
+import 'package:yuugao/pages/album_detail_page.dart';
+import 'package:yuugao/pages/artist_detail_page.dart';
+import 'package:yuugao/pages/playlist_detail_page.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
@@ -269,9 +272,16 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 )
               : null,
           onTap: () {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('歌手详情开发中：${a.name}')));
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ArtistDetailPage(
+                artistId: a.id ?? 0,
+                title: a.name ?? '',
+                coverUrl: (a.picUrl?.isNotEmpty == true
+                        ? a.picUrl
+                        : a.img1v1Url) ??
+                    '',
+              ),
+            ));
           },
         );
       },
@@ -305,9 +315,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
             style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
           onTap: () {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('专辑详情开发中：${a.name}')));
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => AlbumDetailPage(
+                albumId: a.id ?? 0,
+                title: a.name ?? '',
+                coverUrl: a.picUrl ?? '',
+              ),
+            ));
           },
         );
       },
@@ -347,9 +361,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
             style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
           onTap: () {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('歌单详情开发中：${p.name}')));
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PlaylistDetailPage(
+                playlistId: p.id ?? 0,
+                title: p.name ?? '',
+                coverUrl: p.coverImgUrl ?? '',
+              ),
+            ));
           },
         );
       },
