@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -145,10 +145,10 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (meta != null && meta.isNotEmpty) {
         final json = jsonEncode(
             meta.map((k, v) => MapEntry(k.toString(), v)));
-        debugPrint('[podcast] persist SAVE: $json');
+        if (kDebugMode) debugPrint('[podcast] persist SAVE: $json');
         prefs.setString(_kPodcastMeta, json);
       } else {
-        debugPrint('[podcast] persist CLEAR');
+        if (kDebugMode) debugPrint('[podcast] persist CLEAR');
         prefs.setString(_kPodcastMeta, '');
       }
     });
@@ -189,7 +189,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       // 播客元数据覆盖：播客通过 mainSong.id 播放，歌曲原始 name/artist
       // 与节目信息不同。用持久化的播客元数据覆盖。
       final podcastMetaJson = prefs.getString(_kPodcastMeta);
-      debugPrint('[podcast] restore READ: $podcastMetaJson');
+      if (kDebugMode) debugPrint('[podcast] restore READ: $podcastMetaJson');
       Map<int, Map<String, String>>? podcastMeta;
       if (podcastMetaJson != null && podcastMetaJson.isNotEmpty) {
         final decoded = jsonDecode(podcastMetaJson);
@@ -204,12 +204,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
         }
       }
       if (podcastMeta != null && podcastMeta.isNotEmpty) {
-        debugPrint('[podcast] restore APPLY: ${podcastMeta.length} entries');
+        if (kDebugMode) debugPrint('[podcast] restore APPLY: ${podcastMeta.length} entries');
         for (final e in podcastMeta.entries) {
           final song = idToSong[e.key];
           if (song != null) {
             final m = e.value;
-            debugPrint('[podcast] restore OVERRIDE songId=${e.key} name=${m['name']} artist=${m['artist']}');
+            if (kDebugMode) debugPrint('[podcast] restore OVERRIDE songId=${e.key} name=${m['name']} artist=${m['artist']}');
             idToSong[e.key] = Song(
               id: song.id,
               name: m['name'] ?? song.name,
@@ -302,7 +302,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     int? playlistId,
     Map<int, Map<String, String>>? podcastMeta,
   }) async {
-    debugPrint('[podcast] play() received podcastMeta=$podcastMeta');
+    if (kDebugMode) debugPrint('[podcast] play() received podcastMeta=$podcastMeta');
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
@@ -484,13 +484,13 @@ class PlayerNotifier extends Notifier<PlayerState> {
     final song = state.current;
     final pid = state.playlistId;
     if (song == null || pid == null) {
-      debugPrint('[heartbeat] FAIL: precondition lost');
+      if (kDebugMode) debugPrint('[heartbeat] FAIL: precondition lost');
       _revertHeartbeat();
       return;
     }
 
     try {
-      debugPrint('[heartbeat] loading… songId=${song.id} playlistId=$pid');
+      if (kDebugMode) debugPrint('[heartbeat] loading… songId=${song.id} playlistId=$pid');
       final res = await MusicManager().playmodeIntelligenceList(
         songId: song.id,
         playlistId: pid,
@@ -498,24 +498,24 @@ class PlayerNotifier extends Notifier<PlayerState> {
         count: 30,
       );
       if (res == null || res.code != 200) {
-        debugPrint('[heartbeat] FAIL: API code=${res?.code}');
+        if (kDebugMode) debugPrint('[heartbeat] FAIL: API code=${res?.code}');
         _revertHeartbeat();
         return;
       }
       final items = res.data;
       if (items == null || items.isEmpty) {
-        debugPrint('[heartbeat] FAIL: empty data');
+        if (kDebugMode) debugPrint('[heartbeat] FAIL: empty data');
         _revertHeartbeat();
         return;
       }
 
       final ids = items.map((e) => e.id ?? 0).where((id) => id > 0).toList();
       if (ids.isEmpty) {
-        debugPrint('[heartbeat] FAIL: no valid ids');
+        if (kDebugMode) debugPrint('[heartbeat] FAIL: no valid ids');
         _revertHeartbeat();
         return;
       }
-      debugPrint('[heartbeat] got ${ids.length} ids');
+      if (kDebugMode) debugPrint('[heartbeat] got ${ids.length} ids');
 
       final detail = await MusicManager().songDetail(ids: ids);
       final newSongs = (detail?.songs ?? [])
@@ -523,11 +523,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
           .where((s) => s.id > 0)
           .toList();
       if (newSongs.isEmpty) {
-        debugPrint('[heartbeat] FAIL: no songs from detail');
+        if (kDebugMode) debugPrint('[heartbeat] FAIL: no songs from detail');
         _revertHeartbeat();
         return;
       }
-      debugPrint('[heartbeat] songDetail returned ${newSongs.length} songs');
+      if (kDebugMode) debugPrint('[heartbeat] songDetail returned ${newSongs.length} songs');
 
       if (state.mode != PlayMode.heartbeat) return;
 
@@ -544,9 +544,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
         currentIndex: 0,
         position: savedPos,
       );
-      debugPrint('[heartbeat] SUCCESS queue=${_audio.queue.length}');
+      if (kDebugMode) debugPrint('[heartbeat] SUCCESS queue=${_audio.queue.length}');
     } catch (e, st) {
-      debugPrint('[heartbeat] EXCEPTION: $e\n$st');
+      if (kDebugMode) debugPrint('[heartbeat] EXCEPTION: $e\n$st');
       _revertHeartbeat();
     }
   }

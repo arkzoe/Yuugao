@@ -92,41 +92,42 @@ class PlaylistNotifier extends Notifier<PlaylistState> {
   /// 喜欢/取消喜欢。乐观更新 + 失败回滚。
   /// 注：songLike 真实响应可能无 data 字段，故以 code==200 判定成功。
   Future<bool> toggleLike(int songId) async {
-    final liked = isLiked(songId);
-    final newSet = Set<int>.from(state.likedSongIds);
-    if (liked) {
-      newSet.remove(songId);
-    } else {
-      newSet.add(songId);
-    }
-    state = state.copyWith(likedSongIds: newSet); // 乐观更新
+    final wasLiked = isLiked(songId);
+
+    // 乐观更新
+    state = state.copyWith(
+      likedSongIds: _toggledSet(songId, wasLiked),
+    );
 
     try {
-      final res = await _api.songLike(id: songId, like: !liked);
+      final res = await _api.songLike(id: songId, like: !wasLiked);
       final ok = res?.code == 200 || res?.data == true;
       if (!ok) {
-        // 回滚
-        state = state.copyWith(likedSongIds: state.likedSongIds);
-        final rollback = Set<int>.from(state.likedSongIds);
-        if (liked) {
-          rollback.add(songId);
-        } else {
-          rollback.remove(songId);
-        }
-        state = state.copyWith(likedSongIds: rollback);
+        // 回滚到乐观更新前的状态（即恢复原 liked 值）
+        state = state.copyWith(
+          likedSongIds: _toggledSet(songId, !wasLiked),
+        );
         return false;
       }
       return true;
     } catch (_) {
-      final rollback = Set<int>.from(state.likedSongIds);
-      if (liked) {
-        rollback.add(songId);
-      } else {
-        rollback.remove(songId);
-      }
-      state = state.copyWith(likedSongIds: rollback);
+      // 回滚
+      state = state.copyWith(
+        likedSongIds: _toggledSet(songId, !wasLiked),
+      );
       return false;
     }
+  }
+
+  /// 返回将 [songId] 加入/移出 likedSongIds 后的新集合。
+  Set<int> _toggledSet(int songId, bool currentlyLiked) {
+    final s = Set<int>.from(state.likedSongIds);
+    if (currentlyLiked) {
+      s.remove(songId);
+    } else {
+      s.add(songId);
+    }
+    return s;
   }
 
   void clear() => state = const PlaylistState();
