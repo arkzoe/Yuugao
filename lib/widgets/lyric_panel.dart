@@ -87,14 +87,19 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
 
   void _syncActive(Duration pos) {
     if (_lines.isEmpty) return;
-    var idx = 0;
-    for (var i = 0; i < _lines.length; i++) {
-      if (_lines[i].time <= pos) {
-        idx = i;
+    // 二分查找：_lines 已按时间升序排列。
+    // 找到最后一个 time <= pos 的行索引。
+    var lo = 0;
+    var hi = _lines.length - 1;
+    while (lo <= hi) {
+      final mid = (lo + hi) ~/ 2;
+      if (_lines[mid].time <= pos) {
+        lo = mid + 1;
       } else {
-        break;
+        hi = mid - 1;
       }
     }
+    final idx = hi; // hi 是最后一个 time <= pos 的索引（-1 表示尚未到第一行）
     if (idx != _activeIndex && mounted) {
       setState(() => _activeIndex = idx);
       if (_scroll.hasClients) {
