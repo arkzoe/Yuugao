@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/pages/daily_songs_page.dart';
+import 'package:yuugao/pages/podcast_search_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/full_player.dart';
@@ -28,7 +29,11 @@ class HomeActionButtons extends ConsumerWidget {
       ),
       (
         _Action(Icons.sensors, '播客', Colors.grey),
-        () => _todo(context, '播客'),
+        () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PodcastSearchPage()),
+          );
+        },
       ),
       (
         _Action(Icons.cloud_queue, '云盘', Colors.grey),
