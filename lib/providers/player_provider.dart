@@ -8,10 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
-import 'package:yuugao/services/audio_service.dart';
+import 'package:yuugao/services/audio_handler.dart';
 
 // ignore: unused_import — SongFetcher 在 play() 签名中使用
-export 'package:yuugao/services/audio_service.dart' show SongFetcher;
+export 'package:yuugao/services/audio_handler.dart' show SongFetcher;
 
 enum PlayMode { sequential, shuffle, repeatOne, heartbeat }
 
@@ -93,7 +93,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     return const PlayerState();
   }
 
-  final _audio = AudioService.instance;
+  final _audio = YuugaoAudioHandler.instance;
 
   /// 预期目标 index：切歌操作前设置，匹配后才接受 currentIndexStream 事件，
   /// 防止 just_audio 跃迁期间发射的中间态（0、null、旧 index）覆盖 UI。
@@ -140,17 +140,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
       prefs.setInt(_kPositionMs, s.position.inMilliseconds);
       prefs.setString(_kMode, s.mode.name);
       prefs.setBool(_kFmMode, s.isFmMode);
-      // 始终写 setString（不用 remove），避免与之前异步 remove 竞态
       final meta = s.podcastMeta;
       if (meta != null && meta.isNotEmpty) {
         final json = jsonEncode(
             meta.map((k, v) => MapEntry(k.toString(), v)));
         if (kDebugMode) debugPrint('[podcast] persist SAVE: $json');
         prefs.setString(_kPodcastMeta, json);
-      } else {
-        if (kDebugMode) debugPrint('[podcast] persist CLEAR');
-        prefs.setString(_kPodcastMeta, '');
       }
+      // 普通歌曲无需写空字符串 — restore 对 null 和 '' 的处理一致
     });
   }
 
@@ -258,7 +255,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       state = state.copyWith(duration: dur ?? Duration.zero);
     });
     _audio.currentIndexStream.listen((idx) {
-      if (idx == null || _audio.indexSuppressed) return;
+      if (idx == null) return;
       // 有预期的 index 时只接受匹配值，拒绝跃迁过期事件
       if (_intendedIndex != null && idx != _intendedIndex) return;
       _intendedIndex = null; // 匹配成功，后续事件正常接受
@@ -266,9 +263,6 @@ class PlayerNotifier extends Notifier<PlayerState> {
       _persistState(immediate: true);
     });
     _audio.playerStateStream.listen((ps) {
-      // 切歌时 seek / setAudioSources 内部会短暂发射 playing=false，
-      // 抑制该窗口期避免底边栏播放/暂停图标闪烁。
-      if (_audio.indexSuppressed) return;
       state = state.copyWith(
         isPlaying: ps.playing,
         buffering:
@@ -276,8 +270,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
             ps.processingState == ProcessingState.buffering,
       );
     });
-    // 两阶段加载时队列会逐步扩展，同步到 UI
-    _audio.queueStream.listen((q) {
+    // 队列逐步扩展时同步到 UI
+    _audio.songQueueStream.listen((q) {
       if (state.queue.length != q.length) {
         // 队列变化时也修正可能越界的 currentIndex
         final cur = _audio.player.currentIndex;
@@ -322,7 +316,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       totalCount: totalCount,
     );
     _intendedIndex = null; // setQueue 完成，后续 currentIndexStream 正常接受
-    final q = _audio.queue;
+    final q = _audio.songQueue;
     final cur = _audio.player.currentIndex;
     state = state.copyWith(
       queue: q,
@@ -346,7 +340,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     // 必须等 _audio.next() 完成再同步状态，否则 UI 停留在第一首。
     if (state.isFmMode) {
       await _audio.next();
-      state = state.copyWith(queue: _audio.queue, currentIndex: 0);
+      state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
       return;
     }
     final nxt = state.currentIndex + 1;
@@ -367,7 +361,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<void> seek(Duration pos) => _audio.seek(pos);
 
   Future<void> playAt(int index) {
-    final q = _audio.queue;
+    final q = _audio.songQueue;
     if (index >= 0 && index < q.length) {
       _intendedIndex = index;
       state = state.copyWith(currentIndex: index, queue: q);
@@ -377,19 +371,19 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   Future<void> appendAndPlay(Song song) async {
     await _audio.appendAndPlay(song);
-    state = state.copyWith(queue: _audio.queue);
+    state = state.copyWith(queue: _audio.songQueue);
   }
 
   /// 在当前歌曲之后插入一首（下一首播放）
   Future<void> insertNext(Song song) async {
     await _audio.insertNext(song);
-    state = state.copyWith(queue: _audio.queue);
+    state = state.copyWith(queue: _audio.songQueue);
   }
 
   /// 从队列中移除指定位置的歌曲
   Future<void> removeAt(int index) async {
     await _audio.removeAt(index);
-    state = state.copyWith(queue: _audio.queue);
+    state = state.copyWith(queue: _audio.songQueue);
   }
 
   Future<void> setMode(PlayMode mode) async {
@@ -399,16 +393,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (pid == null || pid != _likedPlaylistId) {
         // 不是喜欢的音乐歌单，跳过心动模式
         state = state.copyWith(mode: PlayMode.sequential);
-        _audio.setPlayMode(true);
-        await _audio.setShuffle(false);
+    await _audio.setShuffle(false);
         await _audio.setLoopMode(LoopMode.all);
         _persistState(immediate: true);
         return;
       }
       // 立即显示心形图标 + 设置播放参数
       state = state.copyWith(mode: PlayMode.heartbeat);
-      _audio.setPlayMode(true);
-      await _audio.setShuffle(false);
+await _audio.setShuffle(false);
       await _audio.setLoopMode(LoopMode.all);
       _persistState(immediate: true);
       // 后台异步加载智能列表
@@ -416,7 +408,6 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     state = state.copyWith(mode: mode);
-    _audio.setPlayMode(mode == PlayMode.sequential);
     switch (mode) {
       case PlayMode.sequential:
         await _audio.setShuffle(false);
@@ -451,7 +442,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (ok) {
       state = state.copyWith(
         isFmMode: true,
-        queue: _audio.queue,
+        queue: _audio.songQueue,
         currentIndex: 0,
       );
     }
@@ -461,13 +452,13 @@ class PlayerNotifier extends Notifier<PlayerState> {
   /// FM 切到下一首。
   Future<void> nextFm() async {
     await _audio.nextFm();
-    state = state.copyWith(queue: _audio.queue, currentIndex: 0);
+    state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
   }
 
   /// FM 垃圾桶（跳过 + 标记不喜欢）。
   Future<void> trashFm() async {
     await _audio.trashFm();
-    state = state.copyWith(queue: _audio.queue, currentIndex: 0);
+    state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
   }
 
   // ═══ 心动模式 ═══
@@ -540,11 +531,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
       // 恢复到之前的播放位置，无感知过渡
       await _audio.seek(savedPos);
       state = state.copyWith(
-        queue: _audio.queue,
+        queue: _audio.songQueue,
         currentIndex: 0,
         position: savedPos,
       );
-      if (kDebugMode) debugPrint('[heartbeat] SUCCESS queue=${_audio.queue.length}');
+      if (kDebugMode) debugPrint('[heartbeat] SUCCESS queue=${_audio.songQueue.length}');
     } catch (e, st) {
       if (kDebugMode) debugPrint('[heartbeat] EXCEPTION: $e\n$st');
       _revertHeartbeat();
@@ -555,7 +546,6 @@ class PlayerNotifier extends Notifier<PlayerState> {
   void _revertHeartbeat() {
     if (state.mode != PlayMode.heartbeat) return;
     state = state.copyWith(mode: PlayMode.sequential);
-    _audio.setPlayMode(true);
     // fire-and-forget，不阻塞
     _audio.setShuffle(false);
     _audio.setLoopMode(LoopMode.all);

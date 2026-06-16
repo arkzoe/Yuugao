@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:yuugao/services/audio_service.dart';
+import 'package:yuugao/services/audio_handler.dart';
 
 /// 主题感知色板 — 替代硬编码 AppColors，在深浅切换时自动更新。
 class ThemeColors {
@@ -104,7 +104,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> _loadAudioQuality() async {
     final prefs = await SharedPreferences.getInstance();
     final quality = prefs.getString(_audioQualityKey) ?? _defaultAudioQuality;
-    AudioService.instance.level = quality;
+    YuugaoAudioHandler.instance.level = quality;
     state = state.copyWith(audioQuality: quality);
   }
 
@@ -138,7 +138,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   /// 设置播放音质。持久化并同步到 AudioService。
   Future<void> setAudioQuality(String level) async {
-    AudioService.instance.level = level;
+    YuugaoAudioHandler.instance.level = level;
     state = state.copyWith(audioQuality: level);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_audioQualityKey, level);
@@ -178,7 +178,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
         return;
       }
       if (DateTime.now().millisecondsSinceEpoch >= endMs) {
-        AudioService.instance.player.pause();
+        YuugaoAudioHandler.instance.player.pause();
         cancelSleepTimer();
       }
     });

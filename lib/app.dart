@@ -7,7 +7,7 @@ import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/pages/home_page.dart';
 import 'package:yuugao/pages/login_page.dart';
-import 'package:yuugao/services/audio_service.dart' as audio;
+import 'package:yuugao/services/audio_handler.dart';
 import 'package:yuugao/theme.dart';
 
 class YuugaoApp extends ConsumerWidget {
@@ -15,9 +15,7 @@ class YuugaoApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(
-      settingsProvider.select((s) => s.themeMode),
-    );
+    final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
 
     return MaterialApp(
       title: 'yuugao',
@@ -47,12 +45,16 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
   void initState() {
     super.initState();
 
-    // 通知栏「喜欢」按钮回调：注入 Provider 层读写方法到 AudioService 单例。
-    // 闭包每次调用时读取最新 Provider 状态，确保喜欢图标与数据同步。
-    audio.AudioService.instance.isLiked = (songId) =>
-        ref.read(playlistProvider).likedSongIds.contains(songId);
-    audio.AudioService.instance.toggleLike = (songId) =>
+    // 通知栏「喜欢」按钮回调（fastForward=喜欢, rewind=取消喜欢）
+    YuugaoAudioHandler.instance.onLikeSong = (songId, like) {
+      final isCurrentlyLiked = ref
+          .read(playlistProvider)
+          .likedSongIds
+          .contains(songId);
+      if (isCurrentlyLiked != like) {
         ref.read(playlistProvider.notifier).toggleLike(songId);
+      }
+    };
 
     Future.microtask(() async {
       await ref.read(userProvider.notifier).restore();
@@ -66,12 +68,15 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // 同步喜欢歌曲 ID 到音频处理器，确保通知栏喜欢图标实时更新
+    ref.listen(playlistProvider.select((s) => s.likedSongIds), (_, next) {
+      YuugaoAudioHandler.instance.syncLikedIds(next);
+    });
+
     final status = ref.watch(userProvider.select((s) => s.status));
     switch (status) {
       case AuthStatus.unknown:
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case AuthStatus.authenticated:
         return const HomePage();
       case AuthStatus.unauthenticated:

@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/app.dart';
 import 'package:yuugao/services/audio_handler.dart';
-import 'package:yuugao/services/audio_service.dart' as audio;
 import 'package:yuugao/services/cache_service.dart';
 import 'package:yuugao/services/metadata_cache_service.dart';
 
@@ -174,18 +173,16 @@ Future<void> main() async {
   final session = await AudioSession.instance;
   await session.configure(const AudioSessionConfiguration.music());
 
-  // 后台播放 — 直接使用 audio_service。
-  // 注：AudioServiceConfig 不支持 const 构造函数，不能加 const。
-  // androidStopForegroundOnPause: false 确保暂停时前台服务不被系统回收，
-  // 其通知栏本身即不可滑动关闭，无需同时设置 androidNotificationOngoing。
+  // 后台播放 — 简化 Handler 直接管理 AudioPlayer 与通知栏。
   await AudioService.init(
-    builder: () => YuugaoAudioHandler(audio.AudioService.instance),
+    builder: () => YuugaoAudioHandler(),
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.yuugao.playback',
       androidNotificationChannelName: 'yuugao 播放',
       androidNotificationChannelDescription: '显示播放控制与当前歌曲信息',
       androidNotificationIcon: 'drawable/ic_notification',
-      androidStopForegroundOnPause: false,
+      androidStopForegroundOnPause: true,
+      androidNotificationOngoing: true,
       androidResumeOnClick: true,
     ),
   );
