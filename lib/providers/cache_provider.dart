@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/services/cache_service.dart';
@@ -6,12 +8,24 @@ class CacheState {
   final Map<int, String> cachedSongs;
   final int sizeBytes;
 
-  const CacheState({this.cachedSongs = const {}, this.sizeBytes = 0});
+  /// 当前活跃的下载进度：songId → 0.0..1.0
+  final Map<int, double> downloadProgress;
 
-  CacheState copyWith({Map<int, String>? cachedSongs, int? sizeBytes}) {
+  const CacheState({
+    this.cachedSongs = const {},
+    this.sizeBytes = 0,
+    this.downloadProgress = const {},
+  });
+
+  CacheState copyWith({
+    Map<int, String>? cachedSongs,
+    int? sizeBytes,
+    Map<int, double>? downloadProgress,
+  }) {
     return CacheState(
       cachedSongs: cachedSongs ?? this.cachedSongs,
       sizeBytes: sizeBytes ?? this.sizeBytes,
+      downloadProgress: downloadProgress ?? this.downloadProgress,
     );
   }
 
@@ -28,8 +42,18 @@ class CacheState {
 }
 
 class CacheNotifier extends Notifier<CacheState> {
+  StreamSubscription<Map<int, double>>? _progressSub;
+
   @override
-  CacheState build() => const CacheState();
+  CacheState build() {
+    _progressSub = CacheService.instance.downloadProgressStream.listen(
+      (progress) {
+        state = state.copyWith(downloadProgress: progress);
+      },
+    );
+    ref.onDispose(() => _progressSub?.cancel());
+    return const CacheState();
+  }
 
   final _service = CacheService.instance;
 

@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 ///   "version": 1,
 ///   "songs": { "songId": "文件名" }
 /// }
+///
+/// 下载进度通过 [downloadProgressStream] 暴露，用于 UI 反馈。
 class CacheService {
   CacheService._();
   static final CacheService instance = CacheService._();
@@ -30,6 +32,15 @@ class CacheService {
   bool _ready = false;
 
   Map<int, String> get index => Map.unmodifiable(_index);
+
+  /// 当前活跃的下载进度：songId → 0.0..1.0。
+  final Map<int, double> _progress = {};
+
+  /// 下载进度广播流。每首歌曲的下载进度实时推送。
+  final _progressController =
+      StreamController<Map<int, double>>.broadcast();
+  Stream<Map<int, double>> get downloadProgressStream =>
+      _progressController.stream;
 
   /// 启动时调用：建立缓存目录并载入索引。
   Future<void> init() async {
@@ -85,14 +96,27 @@ class CacheService {
   }
 
   /// 后台下载并写入索引。已缓存或正在下载时直接跳过。
+  ///
+  /// 下载进度通过 [downloadProgressStream] 实时推送。
   Future<void> download(String url, int songId, {String ext = 'mp3'}) async {
     if (!_ready || url.isEmpty) return;
     if (isCached(songId) || _downloading.contains(songId)) return;
     _downloading.add(songId);
+    _progress[songId] = 0;
+    _progressController.add(Map.unmodifiable(_progress));
     final fileName = '$songId.$ext';
     final target = '${_cacheDir.path}/$fileName';
     try {
-      await _dio.download(url, target);
+      await _dio.download(
+        url,
+        target,
+        onReceiveProgress: (received, total) {
+          if (total > 0) {
+            _progress[songId] = received / total;
+            _progressController.add(Map.unmodifiable(_progress));
+          }
+        },
+      );
       _index[songId] = fileName;
       await _saveIndex();
       await _enforceLimit();
@@ -102,6 +126,8 @@ class CacheService {
       if (await f.exists()) await f.delete();
     } finally {
       _downloading.remove(songId);
+      _progress.remove(songId);
+      _progressController.add(Map.unmodifiable(_progress));
     }
   }
 
