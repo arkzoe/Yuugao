@@ -6,7 +6,6 @@ import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 
 class AlbumDetailPage extends ConsumerStatefulWidget {
@@ -243,7 +242,6 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                 ],
               ),
             ),
-            const MiniPlayerBar(),
           ],
         ),
       ),

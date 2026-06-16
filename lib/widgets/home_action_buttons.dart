@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/pages/daily_songs_page.dart';
+import 'package:yuugao/pages/cloud_page.dart';
 import 'package:yuugao/pages/podcast_search_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
@@ -37,7 +38,11 @@ class HomeActionButtons extends ConsumerWidget {
       ),
       (
         _Action(Icons.cloud_queue, '云盘', Colors.grey),
-        () => _todo(context, '云盘'),
+        () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const CloudPage()),
+          );
+        },
       ),
     ];
 
@@ -69,11 +74,6 @@ class HomeActionButtons extends ConsumerWidget {
     }
   }
 
-  void _todo(BuildContext context, String name) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$name 功能开发中')));
-  }
 }
 
 class _Action {

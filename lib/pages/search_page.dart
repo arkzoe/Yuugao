@@ -9,7 +9,6 @@ import 'package:yuugao/pages/album_detail_page.dart';
 import 'package:yuugao/pages/artist_detail_page.dart';
 import 'package:yuugao/pages/playlist_detail_page.dart';
 import 'package:yuugao/widgets/cover_image.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 
 /// 搜索类型常量
@@ -189,7 +188,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
               ),
             ),
             Expanded(child: _buildBody()),
-            const MiniPlayerBar(),
           ],
         ),
       ),

@@ -8,7 +8,6 @@ import 'package:yuugao/models/podcast_episode.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 
 /// 播客详情页：节目列表 + 点击播放。
 class PodcastDetailPage extends ConsumerStatefulWidget {
@@ -164,7 +163,6 @@ class _PodcastDetailPageState extends ConsumerState<PodcastDetailPage> {
       body: Column(
         children: [
           Expanded(child: _buildBody(colors)),
-          const MiniPlayerBar(),
         ],
       ),
     );

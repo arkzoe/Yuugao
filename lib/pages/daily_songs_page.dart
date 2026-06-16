@@ -5,7 +5,6 @@ import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 
 class DailySongsPage extends ConsumerStatefulWidget {
@@ -69,7 +68,6 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
                       ],
                     ),
             ),
-            const MiniPlayerBar(),
           ],
         ),
       ),

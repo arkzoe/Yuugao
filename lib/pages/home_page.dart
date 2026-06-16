@@ -8,7 +8,7 @@ import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/home_action_buttons.dart';
 import 'package:yuugao/widgets/home_drawer.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
+import 'package:yuugao/widgets/player_panel.dart';
 import 'package:yuugao/widgets/playlist_card.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -74,40 +74,42 @@ class _HomePageState extends ConsumerState<HomePage> {
             0,
             0,
           ),
-          child: Scaffold(
-            body: SafeArea(
-              child: Column(
-                children: [
-                  _buildAppBar(user.avatarUrl, colors),
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                            child: Text(
-                              '${_greeting()}，${user.nickname}~',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: colors.textSecondary,
+          child: PlayerPanel(
+            body: Scaffold(
+              body: SafeArea(
+                child: Column(
+                  children: [
+                    _buildAppBar(user.avatarUrl, colors),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              child: Text(
+                                '${_greeting()}，${user.nickname}~',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.textSecondary,
+                                ),
                               ),
                             ),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: HomeActionButtons(),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildPlaylistSection(playlistState, colors),
-                        ],
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: HomeActionButtons(),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildPlaylistSection(playlistState, colors),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const MiniPlayerBar(),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

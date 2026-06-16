@@ -7,7 +7,6 @@ import 'package:yuugao/pages/podcast_detail_page.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 
 /// 用户订阅的播客列表页。
 class PodcastSearchPage extends ConsumerStatefulWidget {
@@ -68,7 +67,6 @@ class _PodcastSearchPageState extends ConsumerState<PodcastSearchPage> {
       body: Column(
         children: [
           Expanded(child: _buildBody(colors)),
-          const MiniPlayerBar(),
         ],
       ),
     );
