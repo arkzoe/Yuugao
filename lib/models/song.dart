@@ -17,6 +17,7 @@ class Song {
   final int id;
   final String name;
   final String artist;
+  final List<int> artistIds;
   final String album;
   final String coverUrl;
 
@@ -30,6 +31,7 @@ class Song {
     required this.id,
     required this.name,
     required this.artist,
+    this.artistIds = const [],
     required this.album,
     required this.coverUrl,
     this.durationMs = 0,
@@ -43,10 +45,12 @@ class Song {
   Duration get duration => Duration(milliseconds: durationMs);
 
   factory Song.fromDailySong(RecommendSongDataDailySongs s) {
+    final ar = s.ar ?? [];
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
-      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: ar.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: s.al?.name ?? '',
       coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,
@@ -55,10 +59,12 @@ class Song {
   }
 
   factory Song.fromPlaylistTrack(PlaylistDetailPlaylistTracks t) {
+    final ar = t.ar ?? [];
     return Song(
       id: t.id ?? 0,
       name: t.name ?? '',
-      artist: (t.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: ar.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: t.al?.name ?? '',
       coverUrl: _safeUrl(t.al?.picUrl ?? ''),
       durationMs: t.dt ?? 0,
@@ -67,10 +73,12 @@ class Song {
   }
 
   factory Song.fromSearchItem(SearchSongItem s) {
+    final artists = s.artists ?? [];
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
-      artist: (s.artists ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: artists.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: artists.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: s.album?.name ?? '',
       coverUrl: _safeUrl(s.album?.picUrl ?? ''),
       durationMs: s.duration ?? 0,
@@ -79,10 +87,12 @@ class Song {
   }
 
   factory Song.fromSongDetail(SongDetailSongs s) {
+    final ar = s.ar ?? [];
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
-      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: ar.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: s.al?.name ?? '',
       coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,
@@ -91,10 +101,12 @@ class Song {
   }
 
   factory Song.fromAlbumTrack(AlbumInfoSongs s) {
+    final ar = s.ar ?? [];
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
-      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: ar.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: s.al?.name ?? '',
       coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,
@@ -103,10 +115,12 @@ class Song {
   }
 
   factory Song.fromArtistHotSong(ArtistHotSong s) {
+    final ar = s.ar ?? [];
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
-      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artist: ar.map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: s.al?.name ?? '',
       coverUrl: _safeUrl(s.al?.picUrl ?? ''),
       durationMs: s.dt ?? 0,

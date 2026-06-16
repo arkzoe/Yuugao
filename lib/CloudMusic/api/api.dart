@@ -144,4 +144,9 @@ class Api {
   /// 播客
   static const String userDj = '/api/djradio/get/subed';
   static const String djProgramByRadio = '/api/dj/program/byradio';
+
+  /// 云盘
+  static const String cloudList = '/weapi/v1/cloud/get';
+  static const String cloudDelete = '/weapi/cloud/del';
+  static const String cloudDetail = '/weapi/v1/cloud/get/byids';
 }

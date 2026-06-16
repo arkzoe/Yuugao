@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../api/album/album_api.dart';
 import '../api/artist/artist_api.dart';
+import '../api/cloud/cloud_api.dart';
 import '../api/fm/fm_api.dart';
 import '../api/mv/mv_api.dart';
 import '../api/playlist/playlist_api.dart';
@@ -33,7 +34,8 @@ class MusicManager
         MvApi,
         SearchApi,
         FmApi,
-        PodcastApi {
+        PodcastApi,
+        CloudApi {
   static final MusicManager _instance = MusicManager._internal();
 
   factory MusicManager() => _instance;

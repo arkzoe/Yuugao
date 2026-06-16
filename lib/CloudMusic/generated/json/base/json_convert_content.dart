@@ -38,6 +38,7 @@ import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/intelligence_list_entity.dart';
 import 'package:yuugao/CloudMusic/api/podcast/entity/dj_program_entity.dart';
 import 'package:yuugao/CloudMusic/api/podcast/entity/user_dj_entity.dart';
+import 'package:yuugao/CloudMusic/api/cloud/cloud_entity.dart';
 
 JsonConvert jsonConvert = JsonConvert();
 
@@ -1696,6 +1697,7 @@ class JsonConvertClassCollection {
     (UserDjEntity).toString(): UserDjEntity.fromJson,
     (UserDjRadio).toString(): UserDjRadio.fromJson,
     (UserDjRadioDj).toString(): UserDjRadioDj.fromJson,
+    (CloudSongListEntity).toString(): CloudSongListEntity.fromJson,
   };
 
   bool containsKey(String type) {
