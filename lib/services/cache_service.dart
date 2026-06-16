@@ -215,4 +215,26 @@ class CacheService {
     }
     return total;
   }
+
+  /// 缓存详情（总字节数 + 文件数量）。
+  Future<CacheInfo> cacheInfo() async {
+    var total = 0;
+    var count = 0;
+    if (await _cacheDir.exists()) {
+      await for (final entity in _cacheDir.list()) {
+        if (entity is File) {
+          total += await entity.length();
+          count++;
+        }
+      }
+    }
+    return CacheInfo(totalBytes: total, fileCount: count);
+  }
+}
+
+/// 缓存信息快照。
+class CacheInfo {
+  final int totalBytes;
+  final int fileCount;
+  const CacheInfo({required this.totalBytes, required this.fileCount});
 }
