@@ -6,7 +6,6 @@ import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
-import 'package:yuugao/widgets/mini_player_bar.dart';
 import 'package:yuugao/widgets/song_tile.dart';
 import 'package:yuugao/pages/album_detail_page.dart';
 
@@ -41,13 +40,12 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
   // 单曲
   List<Song> _songs = [];
 
-  // 专辑
+  // 专辑（合并首屏 + 分页为单一方法）
   final _albums = <_ArtistAlbumItem>[];
   final _albumsScrollCtrl = ScrollController();
   bool _albumsLoading = true;
-  bool _loadingMoreAlbums = false;
-  bool _albumsExhausted = false;
-  int _albumsOffset = 0;
+  bool _loadingMore = false;
+  bool _noMoreAlbums = false;
   static const int _albumsPageSize = 30;
 
   bool _songsLoading = true;
@@ -71,15 +69,15 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
   }
 
   void _onAlbumsScroll() {
-    if (_albumsExhausted || _loadingMoreAlbums || _albumsLoading) return;
+    if (_noMoreAlbums || _loadingMore || _albumsLoading) return;
     if (_albumsScrollCtrl.position.pixels >=
         _albumsScrollCtrl.position.maxScrollExtent - 300) {
-      _loadMoreAlbums();
+      _fetchAlbums(append: true);
     }
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadSongs(), _loadAlbums(), _loadDesc()]);
+    await Future.wait([_loadSongs(), _fetchAlbums(), _loadDesc()]);
   }
 
   Future<void> _loadSongs() async {
@@ -107,71 +105,57 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
     if (mounted) setState(() => _songsLoading = false);
   }
 
-  Future<void> _loadAlbums() async {
-    _albumsOffset = 0;
-    _albumsExhausted = false;
+  /// 拉取专辑列表。[append] 为 true 时追加到已有列表（分页），否则替换。
+  Future<void> _fetchAlbums({bool append = false}) async {
+    if (append && (_loadingMore || _noMoreAlbums)) return;
+    if (append) {
+      _loadingMore = true;
+    } else {
+      _albums.clear();
+      _noMoreAlbums = false;
+    }
+    if (mounted && append) setState(() {});
+
     try {
       final res = await MusicManager().artistAlbum(
         id: widget.artistId,
         limit: _albumsPageSize,
-        offset: 0,
+        offset: append ? _albums.length : 0,
       );
       if (res?.code != 200) {
-        if (mounted) setState(() => _albumsLoading = false);
+        _noMoreAlbums = true;
+        if (mounted) {
+          setState(() {
+            _albumsLoading = false;
+            _loadingMore = false;
+          });
+        }
         return;
       }
-      _albums.clear();
       for (final a in (res?.hotAlbums ?? [])) {
-        _albums.add(_ArtistAlbumItem(
-          id: a.id ?? 0,
-          name: a.name ?? '',
-          picUrl: a.picUrl ?? '',
-          size: a.size ?? 0,
-          publishTime: a.publishTime ?? 0,
-        ));
+        _albums.add(
+          _ArtistAlbumItem(
+            id: a.id ?? 0,
+            name: a.name ?? '',
+            picUrl: a.picUrl ?? '',
+            size: a.size ?? 0,
+            publishTime: a.publishTime ?? 0,
+          ),
+        );
       }
-      _albumsOffset = _albums.length;
-      _albumsExhausted = res?.more != true;
+      _noMoreAlbums = res?.more != true;
       if (_albumCount == 0 && _albums.isNotEmpty) {
         _albumCount = _albums.length;
       }
-    } catch (_) {}
-    if (mounted) setState(() => _albumsLoading = false);
-  }
-
-  Future<void> _loadMoreAlbums() async {
-    if (_loadingMoreAlbums || _albumsExhausted) return;
-    _loadingMoreAlbums = true;
-    if (mounted) setState(() {});
-
-    try {
-      final res = await MusicManager().artistAlbum(
-        id: widget.artistId,
-        limit: _albumsPageSize,
-        offset: _albumsOffset,
-      );
-      if (res?.code != 200) {
-        _albumsExhausted = true;
-        if (mounted) setState(() => _loadingMoreAlbums = false);
-        return;
-      }
-      final batch = <_ArtistAlbumItem>[];
-      for (final a in (res?.hotAlbums ?? [])) {
-        batch.add(_ArtistAlbumItem(
-          id: a.id ?? 0,
-          name: a.name ?? '',
-          picUrl: a.picUrl ?? '',
-          size: a.size ?? 0,
-          publishTime: a.publishTime ?? 0,
-        ));
-      }
-      _albums.addAll(batch);
-      _albumsOffset += batch.length;
-      _albumsExhausted = res?.more != true;
     } catch (_) {
-      _albumsExhausted = true;
+      _noMoreAlbums = true;
     }
-    if (mounted) setState(() => _loadingMoreAlbums = false);
+    if (mounted) {
+      setState(() {
+        _albumsLoading = false;
+        _loadingMore = false;
+      });
+    }
   }
 
   Future<void> _loadDesc() async {
@@ -221,7 +205,10 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
             insets: EdgeInsets.symmetric(horizontal: 16),
           ),
           indicatorSize: TabBarIndicatorSize.label,
-          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
           unselectedLabelStyle: const TextStyle(fontSize: 14),
           tabs: const [
             Tab(text: '详情'),
@@ -243,7 +230,6 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
                 ],
               ),
             ),
-            const MiniPlayerBar(),
           ],
         ),
       ),
@@ -251,53 +237,116 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
   }
 
   // ═══ 详情 Tab ═══
+  //
+  //  Stack 卡片布局：大头像叠在圆角卡片上方，
+  // 卡片内展示歌手名 + 专辑/单曲/MV 统计，卡片下方展示简介。
 
   Widget _buildDetailTab(ThemeColors colors) {
-    final statsParts = <String>[];
-    if (_albumCount > 0) statsParts.add('$_albumCount 专辑');
-    if (_songCount > 0) statsParts.add('$_songCount 单曲');
-    if (_mvCount > 0) statsParts.add('$_mvCount MV');
+    const avatarSize = 130.0;
+    const overlap = avatarSize / 2; // 头像与卡片重叠量
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // 头像 + 名称
-        Center(
-          child: ClipOval(
-            child: CoverImage(url: _artistPic, size: 120, radius: 60),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Center(
-          child: Text(
-            _artistName,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: colors.textPrimary,
-            ),
-          ),
-        ),
-        if (statsParts.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              statsParts.join(' · '),
-              style: TextStyle(fontSize: 13, color: colors.textSecondary),
-            ),
-          ),
-        ],
-        if (_desc.isNotEmpty) ...[
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
           const SizedBox(height: 20),
-          Text(
-            _desc,
-            style: TextStyle(
-              fontSize: 14,
-              color: colors.textPrimary,
-              height: 1.6,
-            ),
+          // ── 头像 + 卡片 Stack ──
+          Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              // 圆角卡片（位于下方，给头像留出空间）
+              Container(
+                width: double.infinity,
+                margin: EdgeInsets.only(top: overlap),
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  bottom: 24,
+                  top: overlap + 10,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    // 歌手名
+                    Text(
+                      _artistName.isNotEmpty ? _artistName : widget.title,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: colors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    // 统计行：专辑 / 单曲 / MV
+                    if (_albumCount > 0 || _songCount > 0 || _mvCount > 0) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _statItem('$_albumCount', '专辑', colors),
+                          _statItem('$_songCount', '单曲', colors),
+                          _statItem('$_mvCount', 'MV', colors),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // 圆形头像（叠在卡片上方）
+              ClipOval(
+                child: CoverImage(
+                  url: _artistPic,
+                  size: avatarSize,
+                  radius: avatarSize / 2,
+                ),
+              ),
+            ],
           ),
+          // ── 简介（卡片下方）──
+          if (_desc.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _desc,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colors.textPrimary,
+                  height: 1.7,
+                ),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// 统计数字 + 标签（用于详情 Tab）。
+  Widget _statItem(String value, String label, ThemeColors colors) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: colors.textSecondary),
+        ),
       ],
     );
   }
@@ -367,7 +416,7 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
     }
     return ListView.builder(
       controller: _albumsScrollCtrl,
-      itemCount: _albums.length + (_albumsExhausted ? 0 : 1),
+      itemCount: _albums.length + (_noMoreAlbums ? 0 : 1),
       itemBuilder: (context, i) {
         if (i >= _albums.length) {
           return const Padding(
@@ -408,13 +457,15 @@ class _ArtistDetailPageState extends ConsumerState<ArtistDetailPage>
             style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
           onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AlbumDetailPage(
-                albumId: a.id,
-                title: a.name,
-                coverUrl: a.picUrl,
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AlbumDetailPage(
+                  albumId: a.id,
+                  title: a.name,
+                  coverUrl: a.picUrl,
+                ),
               ),
-            ));
+            );
           },
         );
       },
