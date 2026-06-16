@@ -46,6 +46,9 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
 
   Color? _prevBg;
 
+  /// 下滑关闭：累积的垂直拖拽距离。
+  double _dragOffsetY = 0;
+
   static const _fmTabs = [
     Tab(text: '信息', height: 40),
     Tab(text: '歌词', height: 40),
@@ -113,7 +116,18 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
           body: child,
         );
       },
-      child: SafeArea(
+      child: GestureDetector(
+        // 下滑关闭：检测垂直拖拽，超过阈值即退出全屏播放器。
+        onVerticalDragUpdate: (d) => _dragOffsetY += d.delta.dy,
+        onVerticalDragEnd: (d) {
+          final velocity = d.primaryVelocity ?? 0;
+          // 下滑超过 80px 或快速下滑 (>500 px/s) 触发关闭
+          if (_dragOffsetY > 80 || velocity > 500) {
+            Navigator.of(context).pop();
+          }
+          _dragOffsetY = 0;
+        },
+        child: SafeArea(
         child: Stack(
           children: [
             // 顶部氛围渐变 — 封面主色自然融入
@@ -195,6 +209,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
             ),
           ],
         ),
+      ),
       ),
     );
 
