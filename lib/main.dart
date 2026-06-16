@@ -1,12 +1,14 @@
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/app.dart';
+import 'package:yuugao/services/audio_handler.dart';
+import 'package:yuugao/services/audio_service.dart' as audio;
 import 'package:yuugao/services/cache_service.dart';
 import 'package:yuugao/services/metadata_cache_service.dart';
 
@@ -30,6 +32,7 @@ class _NeteaseHttpClient implements HttpClient {
 
   static bool _isNetEase(Uri url) => url.host.contains('music.126.net');
 
+  /// 对请求注入防盗链 headers（仅限网易云 CDN 域名）。
   void _inject(HttpClientRequest req, Uri url) {
     if (_isNetEase(url)) {
       req.headers.set('Referer', _referer);
@@ -37,84 +40,71 @@ class _NeteaseHttpClient implements HttpClient {
     }
   }
 
-  // ── 请求方法（唯一需要拦截的）──
+  /// 构造一个对 [_inner] 同名 URL 方法的包装调用，自动注入 headers。
+  Future<HttpClientRequest> _wrap(
+    Future<HttpClientRequest> Function(Uri) innerCall,
+    Uri url,
+  ) =>
+      innerCall(url).then((r) {
+        _inject(r, url);
+        return r;
+      });
+
+  /// 将 (host, port, path) 三元组转为 Uri 后委托给对应的 Url 方法。
+  Uri _uri(String host, int port, String path) =>
+      Uri(scheme: 'https', host: host, port: port, path: path);
+
+  // ── 请求方法 ──
 
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) =>
-      _inner.openUrl(method, url).then((r) {
-        _inject(r, url);
-        return r;
-      });
+      _wrap((u) => _inner.openUrl(method, u), url);
 
   @override
-  Future<HttpClientRequest> open(
-    String method,
-    String host,
-    int port,
-    String path,
-  ) =>
-      openUrl(method, Uri(scheme: 'https', host: host, port: port, path: path));
+  Future<HttpClientRequest> open(String m, String h, int p, String pa) =>
+      openUrl(m, _uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> getUrl(Uri url) => _inner.getUrl(url).then((r) {
-    _inject(r, url);
-    return r;
-  });
+  Future<HttpClientRequest> getUrl(Uri url) => _wrap(_inner.getUrl, url);
 
   @override
-  Future<HttpClientRequest> get(String host, int port, String path) =>
-      getUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> get(String h, int p, String pa) =>
+      getUrl(_uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> postUrl(Uri url) => _inner.postUrl(url).then((r) {
-    _inject(r, url);
-    return r;
-  });
+  Future<HttpClientRequest> postUrl(Uri url) => _wrap(_inner.postUrl, url);
 
   @override
-  Future<HttpClientRequest> post(String host, int port, String path) =>
-      postUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> post(String h, int p, String pa) =>
+      postUrl(_uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> putUrl(Uri url) => _inner.putUrl(url).then((r) {
-    _inject(r, url);
-    return r;
-  });
+  Future<HttpClientRequest> putUrl(Uri url) => _wrap(_inner.putUrl, url);
 
   @override
-  Future<HttpClientRequest> put(String host, int port, String path) =>
-      putUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> put(String h, int p, String pa) =>
+      putUrl(_uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> deleteUrl(Uri url) =>
-      _inner.deleteUrl(url).then((r) {
-        _inject(r, url);
-        return r;
-      });
+  Future<HttpClientRequest> deleteUrl(Uri url) => _wrap(_inner.deleteUrl, url);
 
   @override
-  Future<HttpClientRequest> delete(String host, int port, String path) =>
-      deleteUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> delete(String h, int p, String pa) =>
+      deleteUrl(_uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> patchUrl(Uri url) => _inner.patchUrl(url).then((r) {
-    _inject(r, url);
-    return r;
-  });
+  Future<HttpClientRequest> patchUrl(Uri url) => _wrap(_inner.patchUrl, url);
 
   @override
-  Future<HttpClientRequest> patch(String host, int port, String path) =>
-      patchUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> patch(String h, int p, String pa) =>
+      patchUrl(_uri(h, p, pa));
 
   @override
-  Future<HttpClientRequest> headUrl(Uri url) => _inner.headUrl(url).then((r) {
-    _inject(r, url);
-    return r;
-  });
+  Future<HttpClientRequest> headUrl(Uri url) => _wrap(_inner.headUrl, url);
 
   @override
-  Future<HttpClientRequest> head(String host, int port, String path) =>
-      headUrl(Uri(host: host, port: port, path: path));
+  Future<HttpClientRequest> head(String h, int p, String pa) =>
+      headUrl(_uri(h, p, pa));
 
   // ── 其余属性和方法全部委托 ──
 
@@ -177,15 +167,20 @@ Future<void> main() async {
   // 全局注入 网易云 CDN 防盗链 headers（覆盖所有 dart:io HttpClient 实例）
   HttpOverrides.global = _NeteaseHttpOverrides();
 
-  // 后台播放 / 通知栏控件
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.yuugao.channel.audio',
-    androidNotificationChannelName: 'yuugao 播放',
-    // Android 14+ 息屏/后台时系统会杀无前台服务的进程。
-    // 默认值 true 会在暂停瞬间停止前台服务，导致切歌间隙被系统杀死。
-    // 设为 false 使通知栏常驻，保证高版本安卓息屏后持续播放。
-    // 注意：此选项为 false 时 androidNotificationOngoing 自动失效，不能同时传 true。
-    androidStopForegroundOnPause: false,
+  // 后台播放 — 直接使用 audio_service（替换 just_audio_background beta 桥接层）。
+  // audio_service 原生管理前台服务、MediaSession、通知栏和音频焦点，
+  // 消除了 beta 桥接层中状态同步错误导致的后台暂停问题。
+  //
+  // AudioService.init() 的 builder 回调中创建 YuugaoAudioHandler，
+  // 它会将系统媒体命令（通知/线控/蓝牙）转发给内部 just_audio 播放器，
+  // 并将播放状态（封面、标题、进度）实时同步到 Android MediaSession。
+  await AudioService.init(
+    builder: () => YuugaoAudioHandler(audio.AudioService.instance),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.yuugao.channel.audio',
+      androidNotificationChannelName: 'yuugao 播放',
+      androidStopForegroundOnPause: false,
+    ),
   );
 
   // API 层初始化（cookie 持久化路径）

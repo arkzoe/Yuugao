@@ -44,7 +44,8 @@ dependencies:
   flutter_riverpod: ^3.3.2
   cached_network_image: ^3.4.1
   just_audio: ^0.10.0
-  just_audio_background: ^0.0.1-beta.13
+  audio_service: ^0.18.18
+  audio_session: ^0.2.3
   share_plus: ^13.1.0
   path_provider: ^2.1.5
   qr_flutter: ^4.1.0
