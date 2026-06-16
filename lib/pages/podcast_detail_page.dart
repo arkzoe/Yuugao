@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -139,8 +140,10 @@ class _PodcastDetailPageState extends ConsumerState<PodcastDetailPage> {
     // 确保 startIndex 有效
     if (startIndex >= allSongs.length) startIndex = 0;
 
-    debugPrint('[podcast] _playEpisode: allSongs=${allSongs.length} startIndex=$startIndex');
-    debugPrint('[podcast] _playEpisode: allMeta keys=${allMeta.keys}');
+    if (kDebugMode) {
+      debugPrint('[podcast] _playEpisode: allSongs=${allSongs.length} startIndex=$startIndex');
+      debugPrint('[podcast] _playEpisode: allMeta keys=${allMeta.keys}');
+    }
 
     ref.read(playerProvider.notifier).play(
       allSongs[startIndex],

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:yuugao/providers/cache_provider.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
@@ -15,7 +14,6 @@ class PlayerInfoPanel extends ConsumerWidget {
     final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
     if (song == null) return const SizedBox.shrink();
-    ref.watch(cacheProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
