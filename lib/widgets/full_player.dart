@@ -1,3 +1,7 @@
+import 'dart:ui';
+
+import 'package:animated_background/animated_background.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,20 +16,21 @@ import 'package:yuugao/widgets/player_info_panel.dart';
 import 'package:yuugao/widgets/player_progress_bar.dart';
 import 'package:yuugao/widgets/playlist_panel.dart';
 
-/// 以全屏 modal 形式打开播放器。
+/// 以全屏 modal 形式打开播放器，带封面 Hero 过渡动画。
 void showFullPlayer(BuildContext context) {
   Navigator.of(context).push(
     PageRouteBuilder(
       opaque: true,
-      transitionDuration: const Duration(milliseconds: 300),
+      transitionDuration: const Duration(milliseconds: 350),
+      reverseTransitionDuration: const Duration(milliseconds: 280),
       pageBuilder: (_, _, _) => const FullPlayer(),
       transitionsBuilder: (_, anim, _, child) {
         return SlideTransition(
           position: Tween(
             begin: const Offset(0, 1),
             end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-          child: child,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: FadeTransition(opacity: anim, child: child),
         );
       },
     ),
@@ -40,13 +45,10 @@ class FullPlayer extends ConsumerStatefulWidget {
 }
 
 class _FullPlayerState extends ConsumerState<FullPlayer>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   TabController? _tab;
   bool _wasFm = false;
-
   Color? _prevBg;
-
-  /// 下滑关闭：累积的垂直拖拽距离。
   double _dragOffsetY = 0;
 
   static const _fmTabs = [
@@ -54,7 +56,6 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
     Tab(text: '歌词', height: 40),
     Tab(text: '评论', height: 40),
   ];
-
   static const _normalTabs = [
     Tab(text: '信息', height: 40),
     Tab(text: '列表', height: 40),
@@ -64,8 +65,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
 
   TabController _createTab(bool isFm) {
     _tab?.dispose();
-    final count = isFm ? 3 : 4;
-    final ctrl = TabController(length: count, vsync: this);
+    final ctrl = TabController(length: isFm ? 3 : 4, vsync: this);
     _tab = ctrl;
     return ctrl;
   }
@@ -78,22 +78,18 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
 
   @override
   Widget build(BuildContext context) {
-    // 动态背景色（来自封面取色）
     final playerColors = ref.watch(playerThemeProvider);
-    // UI 控件色（静态主题）
     final colors = ref.watch(currentColorsProvider);
     final song = ref.watch(playerProvider.select((s) => s.current));
     final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
+    final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
 
-    // FM 模式变化时重建 TabController
     if (_tab == null || _wasFm != isFm) {
       _wasFm = isFm;
       _createTab(isFm);
     }
-
     final tab = _tab!;
 
-    // FM 模式下列表面板替换为空白占位
     final panels = isFm
         ? const <Widget>[PlayerInfoPanel(), LyricPanel(), CommentPanel()]
         : const <Widget>[
@@ -103,12 +99,14 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
             CommentPanel(),
           ];
 
+    final coverUrl = song?.coverUrl ?? '';
+
     final result = TweenAnimationBuilder<Color?>(
       tween: ColorTween(
         begin: _prevBg ?? playerColors.background,
         end: playerColors.background,
       ),
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 600),
       curve: Curves.easeInOut,
       builder: (_, bg, child) {
         return Scaffold(
@@ -117,99 +115,161 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
         );
       },
       child: GestureDetector(
-        // 下滑关闭：检测垂直拖拽，超过阈值即退出全屏播放器。
         onVerticalDragUpdate: (d) => _dragOffsetY += d.delta.dy,
         onVerticalDragEnd: (d) {
-          final velocity = d.primaryVelocity ?? 0;
-          // 下滑超过 80px 或快速下滑 (>500 px/s) 触发关闭
-          if (_dragOffsetY > 80 || velocity > 500) {
-            Navigator.of(context).pop();
-          }
+          final v = d.primaryVelocity ?? 0;
+          if (_dragOffsetY > 80 || v > 500) Navigator.of(context).pop();
           _dragOffsetY = 0;
         },
         child: SafeArea(
-        child: Stack(
-          children: [
-            // 顶部氛围渐变 — 封面主色自然融入
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 300,
-              child: IgnorePointer(
-                child: TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(
-                    begin: _prevBg ?? playerColors.background,
-                    end: playerColors.background,
-                  ),
-                  duration: const Duration(milliseconds: 500),
-                  curve: Curves.easeInOut,
-                  builder: (_, bg, child) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            playerColors.accent.withValues(alpha: 0.12),
-                            playerColors.accent.withValues(alpha: 0.02),
-                            Colors.transparent,
-                          ],
+          child: Stack(
+            children: [
+              // ── 第 1 层：封面图背景（低透明度 + 高斯模糊）──
+              if (coverUrl.isNotEmpty)
+                Positioned.fill(
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                      child: Opacity(
+                        opacity: 0.45,
+                        child: CachedNetworkImage(
+                          imageUrl: coverUrl.startsWith('http://')
+                              ? coverUrl.replaceFirst('http://', 'https://')
+                              : coverUrl,
+                          fit: BoxFit.cover,
+                          httpHeaders: const {
+                            'Referer': 'https://music.163.com',
+                            'User-Agent':
+                                'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            // 主内容 — 控件色全部用静态 ThemeColors
-            Column(
-              children: [
-                // 顶栏
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.keyboard_arrow_down,
-                          color: colors.textPrimary),
-                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.share),
-                      onPressed: song == null
-                          ? null
-                          : () => SharePlus.instance.share(ShareParams(
-                              text: '我在听「${song.name}」- ${song.artist}\n'
-                                  'https://music.163.com/song?id=${song.id}')),
-                    ),
-                  ],
-                ),
-                // 面板内容
-                Expanded(
-                  child: TabBarView(
-                    controller: tab,
-                    children: panels,
                   ),
                 ),
-                // 进度 + 控制
-                const PlayerProgressBar(),
-                const PlayerControlsRow(),
-                // 底部 Tab 切换
-                TabBar(
-                  controller: tab,
-                  indicatorColor: colors.primary,
-                  labelColor: colors.primary,
-                  unselectedLabelColor: colors.textSecondary,
-                  labelStyle: const TextStyle(fontSize: 12),
-                  dividerColor: Colors.transparent,
-                  tabs: isFm ? _fmTabs : _normalTabs,
+
+              // ── 第 2 层：色彩渐变叠加 ──
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          playerColors.accent.withValues(alpha: 0.15),
+                          playerColors.background.withValues(alpha: 0.3),
+                          playerColors.background.withValues(alpha: 0.75),
+                          playerColors.background,
+                        ],
+                        stops: const [0.0, 0.3, 0.7, 1.0],
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ],
+              ),
+
+              // ── 第 3 层：粒子（仅播放时显示）──
+              if (isPlaying)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBackground(
+                      vsync: this,
+                      behaviour: RandomParticleBehaviour(
+                        options: ParticleOptions(
+                          baseColor: playerColors.accent.withValues(
+                            alpha: 0.08,
+                          ),
+                          spawnMaxSpeed: 60,
+                          spawnMinSpeed: 20,
+                          spawnOpacity: 0.12,
+                          particleCount: 8,
+                          spawnMaxRadius: 16,
+                        ),
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+
+              // ── 第 4 层：主内容 ──
+              Column(
+                children: [
+                  // 顶栏
+                  SizedBox(
+                    height: 48,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.keyboard_arrow_down,
+                            color: colors.textPrimary,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              'Now Playing',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.share,
+                            size: 20,
+                            color: colors.textPrimary,
+                          ),
+                          onPressed: song == null
+                              ? null
+                              : () => SharePlus.instance.share(
+                                  ShareParams(
+                                    text:
+                                        '我在听「${song.name}」- ${song.artist}\n'
+                                        'https://music.163.com/song?id=${song.id}',
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 面板内容
+                  Expanded(
+                    child: TabBarView(controller: tab, children: panels),
+                  ),
+
+                  // 进度 + 频谱 + 控制 + 底部 tab
+                  const PlayerProgressBar(),
+                  const PlayerControlsRow(),
+                  // 点击已选中的 tab 收起播放器
+                  TabBar(
+                    controller: tab,
+                    indicatorColor: colors.primary,
+                    labelColor: colors.primary,
+                    unselectedLabelColor: colors.textSecondary,
+                    labelStyle: const TextStyle(fontSize: 12),
+                    dividerColor: Colors.transparent,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    tabs: isFm ? _fmTabs : _normalTabs,
+                    onTap: (i) {
+                      if (i == tab.index) {
+                        // 再次点击同一 tab → 折叠播放器
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
 

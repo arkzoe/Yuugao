@@ -9,40 +9,41 @@ class CoverImage extends ConsumerWidget {
   final String url;
   final double size;
   final double radius;
+  final BoxFit? fit;
 
   const CoverImage({
     super.key,
     required this.url,
     this.size = 48,
     this.radius = 6,
+    this.fit,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
 
-    // 网易云封面常返回 http 链接，Android 默认禁止明文流量会导致图片加载失败，
-    // 统一升级为 https。
     final safeUrl = url.startsWith('http://')
         ? url.replaceFirst('http://', 'https://')
         : url;
+
+    final effectiveFit = fit ?? BoxFit.cover;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: !safeUrl.startsWith('http')
           ? _placeholder(colors)
           : CachedNetworkImage(
               imageUrl: safeUrl,
-              // 网易云图片 CDN 校验来源，缺少 Referer / UA 会返回 403，
-              // 导致所有封面都加载失败回退到占位图。
               httpHeaders: const {
                 'Referer': 'https://music.163.com',
                 'User-Agent':
                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                         '(KHTML, like Gecko) Chrome/120.0 Safari/537.36',
               },
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
+              width: size.isFinite ? size : null,
+              height: size.isFinite ? size : null,
+              fit: effectiveFit,
               placeholder: (_, _) => _placeholder(colors),
               errorWidget: (_, _, _) => _placeholder(colors),
             ),
@@ -56,7 +57,8 @@ class CoverImage extends ConsumerWidget {
       width: box,
       height: box,
       color: colors.card,
-      child: Icon(Icons.music_note, color: colors.textSecondary, size: iconSize),
+      child:
+          Icon(Icons.music_note, color: colors.textSecondary, size: iconSize),
     );
   }
 }

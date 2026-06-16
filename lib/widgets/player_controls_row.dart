@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
+import 'package:yuugao/providers/player_theme_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 
-/// 控制行：喜欢 / 上一首 / 播放暂停 / 下一首 / 播放模式。
+/// 喜欢 / 上一首 / 播放暂停(大圆按钮+边框环) / 下一首 / 播放模式。
 class PlayerControlsRow extends ConsumerWidget {
   const PlayerControlsRow({super.key});
 
@@ -25,69 +26,99 @@ class PlayerControlsRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
-    // 仅监听影响按钮外观的字段，避免每 ~200ms 整行重建
+    final playerColors = ref.watch(playerThemeProvider);
     final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
     final buffering = ref.watch(playerProvider.select((s) => s.buffering));
     final mode = ref.watch(playerProvider.select((s) => s.mode));
     final songId = ref.watch(playerProvider.select((s) => s.current?.id));
-    final liked = songId != null &&
-        ref.watch(playlistProvider
-            .select((s) => s.likedSongIds.contains(songId)));
+    final liked =
+        songId != null &&
+        ref.watch(
+          playlistProvider.select((s) => s.likedSongIds.contains(songId)),
+        );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // ── 喜欢 ──
           IconButton(
-            icon: Icon(liked ? Icons.favorite : Icons.favorite_border,
-                color: liked ? colors.primary : colors.textPrimary),
+            icon: Icon(
+              liked ? Icons.favorite : Icons.favorite_border,
+              color: liked ? colors.primary : colors.textPrimary,
+              size: 26,
+            ),
             onPressed: songId == null
                 ? null
-                : () =>
-                    ref.read(playlistProvider.notifier).toggleLike(songId),
+                : () => ref.read(playlistProvider.notifier).toggleLike(songId),
           ),
+
+          // ── 上一首 ──
           IconButton(
-            iconSize: 36,
-            icon: const Icon(Icons.skip_previous),
+            iconSize: 32,
+            icon: Icon(Icons.skip_previous, color: colors.textPrimary),
             onPressed: isFm
-                ? null // FM 无上一首
+                ? null
                 : () => ref.read(playerProvider.notifier).prev(),
           ),
-          Container(
-            decoration: BoxDecoration(
-              color: colors.primary,
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              iconSize: 44,
-              color: Colors.white,
-              icon: Icon(buffering
-                  ? Icons.hourglass_empty
-                  : (isPlaying ? Icons.pause : Icons.play_arrow)),
-              onPressed: () => ref.read(playerProvider.notifier).toggle(),
+
+          // ── 播放/暂停
+          SizedBox(
+            width: 72,
+            height: 72,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(36),
+                onTap: () => ref.read(playerProvider.notifier).toggle(),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    // 边框环：封面主色 6% 透明度
+                    border: Border.all(
+                      color: playerColors.accent.withValues(alpha: 0.2),
+                      width: 3,
+                    ),
+                    // 填充：封面主色 8% 透明度
+                    color: playerColors.accent.withValues(alpha: 0.08),
+                  ),
+                  child: Icon(
+                    buffering
+                        ? Icons.hourglass_empty
+                        : (isPlaying ? Icons.pause : Icons.play_arrow),
+                    size: 36,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ),
             ),
           ),
+
+          // ── 下一首 ──
           IconButton(
-            iconSize: 36,
-            icon: const Icon(Icons.skip_next),
+            iconSize: 32,
+            icon: Icon(Icons.skip_next, color: colors.textPrimary),
             onPressed: () => ref.read(playerProvider.notifier).next(),
           ),
-          // FM 模式：垃圾桶；普通模式：播放模式切换
+
+          // ── FM 垃圾桶 / 播放模式 ──
           if (isFm)
             IconButton(
-              iconSize: 28,
-              icon: const Icon(Icons.thumb_down_alt_outlined),
-              color: colors.textSecondary,
-              onPressed:
-                  () => ref.read(playerProvider.notifier).trashFm(),
+              iconSize: 26,
+              icon: Icon(
+                Icons.thumb_down_alt_outlined,
+                color: colors.textSecondary,
+              ),
+              onPressed: () => ref.read(playerProvider.notifier).trashFm(),
             )
           else
             IconButton(
-              icon: Icon(_modeIcon(mode), color: colors.textPrimary),
-              onPressed:
-                  () => ref.read(playerProvider.notifier).cycleMode(),
+              icon: Icon(_modeIcon(mode), color: colors.textPrimary, size: 26),
+              onPressed: () => ref.read(playerProvider.notifier).cycleMode(),
             ),
         ],
       ),
