@@ -43,6 +43,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   bool _bulkLoading = false; // 批量补齐全量歌曲中，禁止滚动分页
   int _totalCount = 0;
   bool _exhausted = false;
+  int _loadGen = 0; // 代次守卫，导航离开时停止后台加载
 
   final _scrollCtrl = ScrollController();
 
@@ -54,6 +55,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   @override
   void dispose() {
+    _loadGen++; // 取消正在进行的后台批量加载
     _scrollCtrl.dispose();
     _searchCtrl.dispose();
     _searchFocus.dispose();
@@ -145,10 +147,22 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   }
 
   /// 后台补齐 [_allTrackIds] 中尚未加载的所有歌曲，确保搜索覆盖全量。
+  ///
+  /// 分批加载，每批之间短暂让出事件循环（50ms），保持 UI 响应。
   Future<void> _loadAllRemaining() async {
     _bulkLoading = true;
     var offset = _songs.length;
+
+    // 为这次批量加载分配一个代次，导航离开时停止。
+    final loadGen = ++_loadGen;
+    const batchDelay = Duration(milliseconds: 50);
+
     while (offset < _allTrackIds.length) {
+      if (loadGen != _loadGen || !mounted) {
+        _bulkLoading = false;
+        return;
+      }
+
       final batchIds = _allTrackIds
           .skip(offset)
           .take(_pageSize)
@@ -160,6 +174,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       }
       try {
         final detail = await MusicManager().songDetail(ids: batchIds);
+        if (loadGen != _loadGen || !mounted) {
+          _bulkLoading = false;
+          return;
+        }
         final batch = [
           for (final s in (detail?.songs ?? []))
             if (s.id > 0) Song.fromSongDetail(s),
@@ -173,6 +191,11 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         break; // 网络异常则停止，保留已加载部分
       }
       offset += _pageSize;
+
+      // 让出事件循环，使 UI 有机会渲染当前批次
+      if (offset < _allTrackIds.length) {
+        await Future.delayed(batchDelay);
+      }
     }
     _exhausted = _songs.length >= _totalCount;
     _bulkLoading = false;
