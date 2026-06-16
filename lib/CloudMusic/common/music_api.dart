@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../api/album/album_api.dart';
+import '../api/artist/artist_api.dart';
 import '../api/fm/fm_api.dart';
 import '../api/mv/mv_api.dart';
 import '../api/playlist/playlist_api.dart';
@@ -26,6 +27,7 @@ class MusicManager
         RecommendApi,
         TopApi,
         AlbumApi,
+        ArtistApi,
         PlaylistApi,
         SongApi,
         MvApi,

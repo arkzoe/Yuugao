@@ -6,6 +6,9 @@
 import 'package:flutter/material.dart' show debugPrint;
 import 'package:yuugao/CloudMusic/api/album/entity/album_info_entity.dart';
 import 'package:yuugao/CloudMusic/api/album/entity/new_album_entity.dart';
+import 'package:yuugao/CloudMusic/api/artist/entity/artist_album_entity.dart';
+import 'package:yuugao/CloudMusic/api/artist/entity/artist_desc_entity.dart';
+import 'package:yuugao/CloudMusic/api/artist/entity/artist_songs_entity.dart';
 import 'package:yuugao/CloudMusic/api/mv/entity/mv_url_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/catalogue_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/create_playlist_entity.dart';
@@ -319,6 +322,96 @@ class JsonConvert {
               .map<AlbumInfoAlbumInfoCommentThreadResourceInfo>(
                 (Map<String, dynamic> e) =>
                     AlbumInfoAlbumInfoCommentThreadResourceInfo.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistSongsEntity>[] is M) {
+      return data
+              .map<ArtistSongsEntity>(
+                (Map<String, dynamic> e) => ArtistSongsEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistSongsArtist>[] is M) {
+      return data
+              .map<ArtistSongsArtist>(
+                (Map<String, dynamic> e) => ArtistSongsArtist.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistHotSong>[] is M) {
+      return data
+              .map<ArtistHotSong>(
+                (Map<String, dynamic> e) => ArtistHotSong.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistHotSongAr>[] is M) {
+      return data
+              .map<ArtistHotSongAr>(
+                (Map<String, dynamic> e) => ArtistHotSongAr.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistHotSongAl>[] is M) {
+      return data
+              .map<ArtistHotSongAl>(
+                (Map<String, dynamic> e) => ArtistHotSongAl.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistAlbumEntity>[] is M) {
+      return data
+              .map<ArtistAlbumEntity>(
+                (Map<String, dynamic> e) => ArtistAlbumEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistAlbumArtist>[] is M) {
+      return data
+              .map<ArtistAlbumArtist>(
+                (Map<String, dynamic> e) => ArtistAlbumArtist.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistAlbumHotAlbum>[] is M) {
+      return data
+              .map<ArtistAlbumHotAlbum>(
+                (Map<String, dynamic> e) => ArtistAlbumHotAlbum.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistAlbumHotAlbumArtist>[] is M) {
+      return data
+              .map<ArtistAlbumHotAlbumArtist>(
+                (Map<String, dynamic> e) =>
+                    ArtistAlbumHotAlbumArtist.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistDescEntity>[] is M) {
+      return data
+              .map<ArtistDescEntity>(
+                (Map<String, dynamic> e) => ArtistDescEntity.fromJson(e),
+              )
+              .toList()
+          as M;
+    }
+    if (<ArtistDescIntroduction>[] is M) {
+      return data
+              .map<ArtistDescIntroduction>(
+                (Map<String, dynamic> e) =>
+                    ArtistDescIntroduction.fromJson(e),
               )
               .toList()
           as M;
@@ -1414,6 +1507,18 @@ class JsonConvertClassCollection {
         AlbumInfoAlbumInfoCommentThread.fromJson,
     (AlbumInfoAlbumInfoCommentThreadResourceInfo).toString():
         AlbumInfoAlbumInfoCommentThreadResourceInfo.fromJson,
+    (ArtistSongsEntity).toString(): ArtistSongsEntity.fromJson,
+    (ArtistSongsArtist).toString(): ArtistSongsArtist.fromJson,
+    (ArtistHotSong).toString(): ArtistHotSong.fromJson,
+    (ArtistHotSongAr).toString(): ArtistHotSongAr.fromJson,
+    (ArtistHotSongAl).toString(): ArtistHotSongAl.fromJson,
+    (ArtistAlbumEntity).toString(): ArtistAlbumEntity.fromJson,
+    (ArtistAlbumArtist).toString(): ArtistAlbumArtist.fromJson,
+    (ArtistAlbumHotAlbum).toString(): ArtistAlbumHotAlbum.fromJson,
+    (ArtistAlbumHotAlbumArtist).toString():
+        ArtistAlbumHotAlbumArtist.fromJson,
+    (ArtistDescEntity).toString(): ArtistDescEntity.fromJson,
+    (ArtistDescIntroduction).toString(): ArtistDescIntroduction.fromJson,
     (NewAlbumEntity).toString(): NewAlbumEntity.fromJson,
     (NewAlbumAlbums).toString(): NewAlbumAlbums.fromJson,
     (NewAlbumAlbumsArtists).toString(): NewAlbumAlbumsArtists.fromJson,

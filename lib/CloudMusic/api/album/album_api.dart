@@ -41,23 +41,4 @@ mixin AlbumApi {
     );
   }
 
-  /// 歌手专辑
-  ///
-  /// [id] 歌手ID（必选）
-  /// [limit] （可选，默认30）
-  /// [offset]（可选，默认0）
-  /// [total] 是否请求全部（可选，默认 total）
-  Future<dynamic> artistAlbum({
-    required int id,
-    int limit = 30,
-    int offset = 0,
-    bool total = true,
-  }) async {
-    final data = {'id': id, 'limit': limit, 'offset': offset, 'total': total};
-    return await MusicManager().post(
-      url: Api.artistAlbum,
-      options: createOption(),
-      data: data,
-    );
-  }
 }

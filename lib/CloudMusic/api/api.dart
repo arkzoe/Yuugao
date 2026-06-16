@@ -45,15 +45,22 @@ class Api {
   //热门歌手
   static const String topArtist = '/api/artist/top';
 
+  /// artist
+  //歌手信息+热门歌曲（id 拼入路径：/api/v1/artist/$id）
+  static const String artistSongs = '/api/v1/artist';
+
+  //歌手专辑（id 拼入路径：/api/artist/albums/$id）
+  static const String artistAlbum = '/api/artist/albums';
+
+  //歌手描述
+  static const String artistDesc = '/api/artist/desc';
+
   ///album
   //最新专辑
   static const String newAlbum = '/api/album/new';
 
   //专辑内容
   static const String albumInfo = '/api/v1/album';
-
-  //歌手专辑
-  static const String artistAlbum = '/api/artist/albums';
 
   ///playlist
   //歌单分类
