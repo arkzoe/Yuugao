@@ -3,6 +3,8 @@ import 'dart:collection';
 
 import 'package:just_audio/just_audio.dart';
 
+import 'package:audio_session/audio_session.dart';
+
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
 import 'package:yuugao/models/song.dart';
@@ -40,19 +42,45 @@ class AudioService {
   final LinkedHashMap<int, AudioSource> _hotCache = LinkedHashMap();
   static const int _hotCacheLimit = 5;
 
-  /// 是否已持有 WiFi 锁。
+  /// 是否已持有 WiFi 锁 + CPU 唤醒锁。
   bool _wifiLockHeld = false;
+  bool _wakeLockHeld = false;
+
+  // ── 通知栏 喜欢按钮 回调（由 app.dart 注入）──
+
+  /// 判断某首歌曲是否已喜欢（由 Provider 层设置）。
+  bool Function(int songId)? isLiked;
+
+  /// 切换某首歌曲的喜欢状态（由 Provider 层设置）。
+  /// 返回操作是否成功。
+  Future<bool> Function(int songId)? toggleLike;
 
   AudioService._() {
     _bindCaching();
+    _initAudioSession();
   }
+
+  /// 监听耳机拔出事件
+  void _initAudioSession() {
+    AudioSession.instance.then((session) {
+      // 耳机拔出：自动暂停
+      session.becomingNoisyEventStream.listen((_) {
+        player.pause();
+      });
+    });
+  }
+
   static final AudioService instance = AudioService._();
 
-  /// 确保 WiFi 锁已获取（息屏后 WiFi 不会进入低功耗模式）。
+  /// 确保 WiFi 锁 + CPU 唤醒锁已获取（息屏后 WiFi 不会低功耗，CPU 不会挂起）。
   void _ensureWifiLock() {
     if (!_wifiLockHeld) {
       _wifiLockHeld = true;
       PlatformService.acquireWifiLock();
+    }
+    if (!_wakeLockHeld) {
+      _wakeLockHeld = true;
+      PlatformService.acquireWakeLock();
     }
   }
 
@@ -385,12 +413,30 @@ class AudioService {
     _queueController.add(List.unmodifiable(_queue));
   }
 
+  /// 释放锁并停止播放（不清除队列，由通知栏停止按钮触发）。
+  void shutdown() {
+    if (_wifiLockHeld) {
+      PlatformService.releaseWifiLock();
+      _wifiLockHeld = false;
+    }
+    if (_wakeLockHeld) {
+      PlatformService.releaseWakeLock();
+      _wakeLockHeld = false;
+    }
+    player.stop();
+  }
+
   void dispose() {
     _queueController.close();
     if (_wifiLockHeld) {
       PlatformService.releaseWifiLock();
       _wifiLockHeld = false;
     }
+    if (_wakeLockHeld) {
+      PlatformService.releaseWakeLock();
+      _wakeLockHeld = false;
+    }
+    _hotCache.clear();
     player.dispose();
   }
 
@@ -604,26 +650,12 @@ class AudioService {
       final batchSongs = candidates.sublist(offset, batchEnd);
       if (batchSongs.isEmpty) break;
 
-      // 过滤已解析的歌曲
+      // 委托给 _batchResolve，复用网络自适应降级 + URL 过期逻辑
       final toResolve = batchSongs
           .where((s) => !_resolvedUrls.containsKey(s.id))
           .toList();
       if (toResolve.isNotEmpty) {
-        final ids = toResolve.map((s) => s.id.toString()).toList();
-        final res = await MusicManager().songUrl(
-          ids: ids,
-          level: _effectiveLevel,
-        );
-        final data = res?.data ?? [];
-        final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        for (final d in data) {
-          if (d.id != null && d.url != null && d.url!.isNotEmpty) {
-            final type = (d.type ?? 'mp3').toLowerCase();
-            _resolvedUrls[d.id!] = d.url!;
-            _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
-            _resolvedExpiry[d.id!] = nowSec + (d.expi ?? 1200);
-          }
-        }
+        await _batchResolve(toResolve);
       }
 
       if (_generation != setGen || _expandGen != gen) return;
@@ -992,9 +1024,11 @@ class AudioService {
       if (batch == _lastCacheBatch) return; // 本批次已处理
       _lastCacheBatch = batch;
 
-      for (var i = idx + 1;
-          i < idx + 1 + _cacheAhead && i < _queue.length;
-          i++) {
+      for (
+        var i = idx + 1;
+        i < idx + 1 + _cacheAhead && i < _queue.length;
+        i++
+      ) {
         _downloadSong(_queue[i]);
       }
 
