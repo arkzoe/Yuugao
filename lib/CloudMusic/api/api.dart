@@ -80,6 +80,10 @@ class Api {
   //精品歌单tags
   static const String highQualityTags = '/api/playlist/highquality/tags';
 
+  //收藏/取消收藏歌单
+  static const String playlistSubscribe = '/api/playlist/subscribe';
+  static const String playlistUnsubscribe = '/api/playlist/unsubscribe';
+
   /// song
   //新歌速递
   static const String newSongs = '/api/v1/discovery/new/songs';

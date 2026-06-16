@@ -6,6 +6,7 @@ import 'package:yuugao/CloudMusic/api/playlist/entity/intelligence_list_entity.d
 import 'package:yuugao/CloudMusic/api/playlist/entity/playlist_detail_entity.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 
+import '../user/entity/bool_entity.dart';
 import '../user/entity/string_entity.dart';
 
 mixin PlaylistApi {
@@ -104,6 +105,25 @@ mixin PlaylistApi {
   Future<HighQualityTagsEntity?> highQualityTags() async {
     return await MusicManager().post<HighQualityTagsEntity>(
       url: Api.highQualityTags,
+    );
+  }
+
+  /// 收藏/取消收藏歌单
+  ///
+  /// [id] 歌单 id（必选）
+  /// [t] 类型，1:收藏, 2:取消收藏（必选）
+  Future<BoolEntity?> playlistSubscribe({
+    required int id,
+    required int t,
+  }) async {
+    final url = t == 1 ? Api.playlistSubscribe : Api.playlistUnsubscribe;
+    final data = {
+      'id': id,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    return await MusicManager().post<BoolEntity>(
+      url: url,
+      data: data,
     );
   }
 
