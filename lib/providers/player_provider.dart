@@ -28,6 +28,12 @@ class PlayerState {
   /// 当前队列源自的歌单 ID（用于心动模式）。
   final int? playlistId;
 
+  /// 播客节目元数据覆盖：songId → {name, artist, coverUrl}。
+  ///
+  /// 播客通过 mainSong.id 播放，但歌曲本身的 name/artist 与节目不同。
+  /// 此字段在持久化时保存，恢复时覆盖 Song.fromSongDetail 的字段。
+  final Map<int, Map<String, String>>? podcastMeta;
+
   const PlayerState({
     this.queue = const [],
     this.currentIndex = -1,
@@ -38,6 +44,7 @@ class PlayerState {
     this.buffering = false,
     this.isFmMode = false,
     this.playlistId,
+    this.podcastMeta,
   });
 
   Song? get current => (currentIndex >= 0 && currentIndex < queue.length)
@@ -62,6 +69,7 @@ class PlayerState {
     bool? buffering,
     bool? isFmMode,
     int? playlistId,
+    Map<int, Map<String, String>>? podcastMeta,
   }) {
     return PlayerState(
       queue: queue ?? this.queue,
@@ -73,6 +81,7 @@ class PlayerState {
       buffering: buffering ?? this.buffering,
       isFmMode: isFmMode ?? this.isFmMode,
       playlistId: playlistId ?? this.playlistId,
+      podcastMeta: podcastMeta ?? this.podcastMeta,
     );
   }
 }
@@ -97,6 +106,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
   static const _kPositionMs = 'player_position_ms';
   static const _kMode = 'player_mode';
   static const _kFmMode = 'player_fm_mode';
+  static const _kPodcastMeta = 'player_podcast_meta';
 
   /// 上次持久化的毫秒时间戳（用于位置流的节流）。
   int _lastPersistMs = 0;
@@ -118,9 +128,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (now - _lastPersistMs < _persistThrottleMs) return;
       _lastPersistMs = now;
     }
-    // 捕获当前状态快照，fire-and-forget 写 SharedPreferences，
-    // 不 await —— 避免阻塞事件循环。
+    // 队列为空说明尚未恢复 / 无播放内容，跳过持久化避免覆盖已有数据。
     final s = state;
+    if (s.queue.isEmpty) return;
     SharedPreferences.getInstance().then((prefs) {
       prefs.setString(
         _kQueueJson,
@@ -130,6 +140,17 @@ class PlayerNotifier extends Notifier<PlayerState> {
       prefs.setInt(_kPositionMs, s.position.inMilliseconds);
       prefs.setString(_kMode, s.mode.name);
       prefs.setBool(_kFmMode, s.isFmMode);
+      // 始终写 setString（不用 remove），避免与之前异步 remove 竞态
+      final meta = s.podcastMeta;
+      if (meta != null && meta.isNotEmpty) {
+        final json = jsonEncode(
+            meta.map((k, v) => MapEntry(k.toString(), v)));
+        debugPrint('[podcast] persist SAVE: $json');
+        prefs.setString(_kPodcastMeta, json);
+      } else {
+        debugPrint('[podcast] persist CLEAR');
+        prefs.setString(_kPodcastMeta, '');
+      }
     });
   }
 
@@ -164,6 +185,44 @@ class PlayerNotifier extends Notifier<PlayerState> {
           idToSong[s.id!] = Song.fromSongDetail(s);
         }
       }
+
+      // 播客元数据覆盖：播客通过 mainSong.id 播放，歌曲原始 name/artist
+      // 与节目信息不同。用持久化的播客元数据覆盖。
+      final podcastMetaJson = prefs.getString(_kPodcastMeta);
+      debugPrint('[podcast] restore READ: $podcastMetaJson');
+      Map<int, Map<String, String>>? podcastMeta;
+      if (podcastMetaJson != null && podcastMetaJson.isNotEmpty) {
+        final decoded = jsonDecode(podcastMetaJson);
+        if (decoded is Map) {
+          final raw = decoded as Map<String, dynamic>;
+          if (raw.isNotEmpty) {
+            podcastMeta = raw.map(
+              (k, v) =>
+                  MapEntry(int.parse(k), Map<String, String>.from(v)),
+            );
+          }
+        }
+      }
+      if (podcastMeta != null && podcastMeta.isNotEmpty) {
+        debugPrint('[podcast] restore APPLY: ${podcastMeta.length} entries');
+        for (final e in podcastMeta.entries) {
+          final song = idToSong[e.key];
+          if (song != null) {
+            final m = e.value;
+            debugPrint('[podcast] restore OVERRIDE songId=${e.key} name=${m['name']} artist=${m['artist']}');
+            idToSong[e.key] = Song(
+              id: song.id,
+              name: m['name'] ?? song.name,
+              artist: m['artist'] ?? song.artist,
+              album: song.album,
+              coverUrl: m['coverUrl'] ?? song.coverUrl,
+              durationMs: song.durationMs,
+              fee: song.fee,
+            );
+          }
+        }
+      }
+
       // 按原顺序过滤，保留仍存在的歌曲
       final songs = ids.map((id) => idToSong[id]).whereType<Song>().toList();
       if (songs.isEmpty) return false;
@@ -174,6 +233,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
         currentIndex: clampedIndex,
         mode: mode,
         isFmMode: fmMode,
+        podcastMeta: podcastMeta,
       );
       // 先设 mode 再 setQueue，避免后台扩展期间模式变更冲突
       await setMode(mode);
@@ -240,7 +300,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     SongFetcher? fetchMore,
     int totalCount = 0,
     int? playlistId,
+    Map<int, Map<String, String>>? podcastMeta,
   }) async {
+    debugPrint('[podcast] play() received podcastMeta=$podcastMeta');
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
@@ -249,6 +311,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       queue: list,
       currentIndex: index,
       playlistId: playlistId,
+      podcastMeta: podcastMeta,
       isFmMode: false, // 播放歌单/搜索歌曲时退出 FM 模式
       mode: state.mode == PlayMode.heartbeat ? PlayMode.sequential : state.mode,
     );
@@ -267,6 +330,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
           ? cur
           : state.currentIndex,
     );
+
+    _persistState(immediate: true);
 
     // 喜欢的音乐歌单默认启动心动模式
     if (playlistId != null && playlistId == _likedPlaylistId) {
