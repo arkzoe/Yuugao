@@ -1,3 +1,5 @@
+import 'package:yuugao/CloudMusic/api/album/entity/album_info_entity.dart';
+import 'package:yuugao/CloudMusic/api/artist/entity/artist_songs_entity.dart';
 import 'package:yuugao/CloudMusic/api/playlist/entity/playlist_detail_entity.dart';
 import 'package:yuugao/CloudMusic/api/recommend/entity/recommend_song_entity.dart';
 import 'package:yuugao/CloudMusic/api/search/entity/search_entity.dart';
@@ -77,6 +79,30 @@ class Song {
   }
 
   factory Song.fromSongDetail(SongDetailSongs s) {
+    return Song(
+      id: s.id ?? 0,
+      name: s.name ?? '',
+      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      album: s.al?.name ?? '',
+      coverUrl: _safeUrl(s.al?.picUrl ?? ''),
+      durationMs: s.dt ?? 0,
+      fee: s.fee ?? 0,
+    );
+  }
+
+  factory Song.fromAlbumTrack(AlbumInfoSongs s) {
+    return Song(
+      id: s.id ?? 0,
+      name: s.name ?? '',
+      artist: (s.ar ?? []).map((a) => a.name ?? '').where((n) => n.isNotEmpty).join(' / '),
+      album: s.al?.name ?? '',
+      coverUrl: _safeUrl(s.al?.picUrl ?? ''),
+      durationMs: s.dt ?? 0,
+      fee: s.fee ?? 0,
+    );
+  }
+
+  factory Song.fromArtistHotSong(ArtistHotSong s) {
     return Song(
       id: s.id ?? 0,
       name: s.name ?? '',
