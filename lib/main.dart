@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -167,19 +168,25 @@ Future<void> main() async {
   // 全局注入 网易云 CDN 防盗链 headers（覆盖所有 dart:io HttpClient 实例）
   HttpOverrides.global = _NeteaseHttpOverrides();
 
-  // 后台播放 — 直接使用 audio_service（替换 just_audio_background beta 桥接层）。
-  // audio_service 原生管理前台服务、MediaSession、通知栏和音频焦点，
-  // 消除了 beta 桥接层中状态同步错误导致的后台暂停问题。
-  //
-  // AudioService.init() 的 builder 回调中创建 YuugaoAudioHandler，
-  // 它会将系统媒体命令（通知/线控/蓝牙）转发给内部 just_audio 播放器，
-  // 并将播放状态（封面、标题、进度）实时同步到 Android MediaSession。
+  // ── 音频会话配置 ──
+  // 必须早于 AudioService.init()，否则 Android 不视此 App 为音乐播放器：
+  // 通知栏不显示、后台优先级低、易被 Doze 杀死。
+  final session = await AudioSession.instance;
+  await session.configure(const AudioSessionConfiguration.music());
+
+  // 后台播放 — 直接使用 audio_service。
+  // 注：AudioServiceConfig 不支持 const 构造函数，不能加 const。
+  // androidStopForegroundOnPause: false 确保暂停时前台服务不被系统回收，
+  // 其通知栏本身即不可滑动关闭，无需同时设置 androidNotificationOngoing。
   await AudioService.init(
     builder: () => YuugaoAudioHandler(audio.AudioService.instance),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.yuugao.channel.audio',
+    config: AudioServiceConfig(
+      androidNotificationChannelId: 'com.yuugao.playback',
       androidNotificationChannelName: 'yuugao 播放',
+      androidNotificationChannelDescription: '显示播放控制与当前歌曲信息',
+      androidNotificationIcon: 'drawable/ic_notification',
       androidStopForegroundOnPause: false,
+      androidResumeOnClick: true,
     ),
   );
 
@@ -192,6 +199,11 @@ Future<void> main() async {
 
   // 元数据缓存
   await MetadataCacheService.instance.init();
+
+  // ── 图片缓存配置 ──
+  // 限制内存中的图片缓存大小（默认 200MB 太大，50MB 足够封面缩略图）。
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
 
   runApp(const ProviderScope(child: YuugaoApp()));
 }
