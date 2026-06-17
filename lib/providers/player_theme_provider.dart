@@ -53,7 +53,7 @@ class PlayerThemeColors {
     return PlayerThemeColors(
       background: background,
       surface: surface,
-      accent: p.safeVibrant,
+      accent: p.safeAccent,
       onBackground: onBg,
       subtitle: sub,
       divider: divider,

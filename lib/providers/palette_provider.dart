@@ -45,6 +45,32 @@ class SongPalette {
 
   /// 回退链：muted → dominant
   Color get safeMuted => muted ?? dominant;
+
+  /// 适合 UI 强调色的候选 — 浅色封面时优先选暗色调槽位，
+  /// 再对结果做兜底加深，确保在各类封面上都清晰可见。
+  Color get safeAccent {
+    final dominantLight = dominant.computeLuminance() > 0.55;
+
+    // 浅封面：优先 darkVibrant / darkMuted，它们对比度更高
+    final Color candidate;
+    if (dominantLight) {
+      candidate = darkVibrant ?? darkMuted ?? vibrant ?? dominant;
+    } else {
+      candidate = vibrant ?? darkVibrant ?? dominant;
+    }
+
+    return _deepenIfNeeded(candidate);
+  }
+
+  /// 降低过亮颜色：明度 > 阈值时压暗并提饱和。
+  static Color _deepenIfNeeded(Color color, {double maxLuminance = 0.5}) {
+    if (color.computeLuminance() <= maxLuminance) return color;
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness((hsl.lightness * 0.5).clamp(0.0, 0.6))
+        .withSaturation((hsl.saturation + 0.2).clamp(0.0, 1.0))
+        .toColor();
+  }
 }
 
 /// 管理当前歌曲封面的取色状态。
