@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:yuugao/CloudMusic/api/song/entity/song_detail_entity.dart';
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
@@ -270,17 +271,17 @@ class PlayerNotifier extends Notifier<PlayerState> {
             ps.processingState == ProcessingState.buffering,
       );
     });
-    // 队列逐步扩展时同步到 UI
+    // 队列变化时同步到 UI（包括同长度的元数据替换，如 FM 后台补齐歌手/封面）
     _audio.songQueueStream.listen((q) {
-      if (state.queue.length != q.length) {
-        // 队列变化时也修正可能越界的 currentIndex
-        final cur = _audio.player.currentIndex;
-        final idx = (cur != null && cur >= 0 && cur < q.length)
-            ? cur
-            : state.currentIndex.clamp(0, q.length - 1);
-        state = state.copyWith(queue: q, currentIndex: idx);
-        _persistState(immediate: true);
-      }
+      // 引用比较：_songQueueController 每次 add 都创建新的 unmodifiable 包装，
+      // 旧引用与新引用不同即表示队列已变化（新增 / 替换元数据）
+      if (state.queue == q) return;
+      final cur = _audio.player.currentIndex;
+      final idx = (cur != null && cur >= 0 && cur < q.length)
+          ? cur
+          : state.currentIndex.clamp(0, q.length - 1);
+      state = state.copyWith(queue: q, currentIndex: idx);
+      _persistState(immediate: true);
     });
   }
 
@@ -480,20 +481,21 @@ await _audio.setShuffle(false);
   /// 保留当前播放的歌曲在队首，心动列表追加到后面，
   /// 替换后 seek 回原位置，避免中断用户正在听的歌。
   Future<void> _startHeartbeat() async {
-    final song = state.current;
+    final seed = state.current;
     final pid = state.playlistId;
-    if (song == null || pid == null) {
+    if (seed == null || pid == null) {
       if (kDebugMode) debugPrint('[heartbeat] FAIL: precondition lost');
       _revertHeartbeat();
       return;
     }
 
     try {
-      if (kDebugMode) debugPrint('[heartbeat] loading… songId=${song.id} playlistId=$pid');
+      // ── 第一步：获取智能列表 ID ──
+      if (kDebugMode) debugPrint('[heartbeat] loading… songId=${seed.id} playlistId=$pid');
       final res = await MusicManager().playmodeIntelligenceList(
-        songId: song.id,
+        songId: seed.id,
         playlistId: pid,
-        startMusicId: song.id,
+        startMusicId: seed.id,
         count: 30,
       );
       if (res == null || res.code != 200) {
@@ -516,7 +518,12 @@ await _audio.setShuffle(false);
       }
       if (kDebugMode) debugPrint('[heartbeat] got ${ids.length} ids');
 
-      final detail = await MusicManager().songDetail(ids: ids);
+      // ── 第二步：并行获取全部歌曲详情 + 音频 URL ──
+      final results = await Future.wait([
+        MusicManager().songDetail(ids: ids),
+        _audio.preloadUrls(ids),
+      ]);
+      final detail = results[0] as SongDetailEntity?;
       final newSongs = (detail?.songs ?? [])
           .map((s) => Song.fromSongDetail(s))
           .where((s) => s.id > 0)
@@ -530,18 +537,14 @@ await _audio.setShuffle(false);
 
       if (state.mode != PlayMode.heartbeat) return;
 
-      // 保留当前歌曲在队首，心动列表追加到后面（去重）
-      final queue = [song, ...newSongs.where((s) => s.id != song.id)];
-      final savedPos = _audio.player.position;
-
-      state = state.copyWith(queue: queue, currentIndex: 0);
-      await _audio.setQueue(queue, initialIndex: 0);
-      // 恢复到之前的播放位置，无感知过渡
-      await _audio.seek(savedPos);
+      // ── 第三步：替换后续队列，当前歌继续播不中断 ──
+      // URL 已全部预热，replaceUpcoming 内的 _batchResolve 命中缓存零网络开销
+      final upcoming = newSongs.where((s) => s.id != seed.id).toList();
+      await _audio.replaceUpcoming(upcoming);
       state = state.copyWith(
         queue: _audio.songQueue,
-        currentIndex: 0,
-        position: savedPos,
+        currentIndex: _audio.player.currentIndex ?? 0,
+        position: _audio.player.position,
       );
       if (kDebugMode) debugPrint('[heartbeat] SUCCESS queue=${_audio.songQueue.length}');
     } catch (e, st) {
