@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/CloudMusic/api/fm/entity/personal_fm_entity.dart';
+import 'package:yuugao/CloudMusic/api/song/entity/song_detail_entity.dart';
 import 'package:yuugao/models/song.dart';
 import 'package:yuugao/services/cache_service.dart';
 
@@ -138,6 +139,53 @@ class YuugaoAudioHandler extends BaseAudioHandler
     _pushQueueToMediaSession();
   }
 
+  /// 替换当前索引之后的所有歌曲为 [newSongs]。
+  ///
+  /// 当前正在播放的音频源不受影响 —— 不销毁、不重建、不 seek，
+  /// 仅清理后续队列并追加新歌，播放无任何中断。
+  /// 使用 player 原生方法逐首操作，避免 ConcatenatingAudioSource
+  /// 触发 ExoPlayer 时间线重建导致播放中断。
+  Future<void> replaceUpcoming(List<Song> newSongs) async {
+    final currentIndex = _player.currentIndex ?? 0;
+    final wasPlaying = _player.playing;
+
+    // 删除当前歌曲之后的所有音频源（从末尾删避免索引偏移，
+    // 以 _songQueue 为准；越界由 try/catch 兜底）
+    for (var i = _songQueue.length - 1; i > currentIndex; i--) {
+      try {
+        await _player.removeAudioSourceAt(i);
+      } catch (_) {
+        // 实际序列可能比 _songQueue 短（无 URL 的歌没生成 AudioSource）
+      }
+      _songQueue.removeAt(i);
+    }
+
+    if (newSongs.isEmpty) {
+      _songQueueController.add(List.unmodifiable(_songQueue));
+      _pushQueueToMediaSession();
+      if (wasPlaying && !_player.playing) _player.play();
+      return;
+    }
+
+    // 解析 URL（若已通过 preloadUrls 预热则命中缓存，零网络开销）
+    await _batchResolve(newSongs);
+
+    // 逐个追加到队尾（已清空后续队列，队尾 = currentIndex + 1）
+    for (final s in newSongs) {
+      final src = _buildSource(s);
+      if (src != null) {
+        await _player.addAudioSource(src);
+        _songQueue.add(s);
+      }
+    }
+
+    _songQueueController.add(List.unmodifiable(_songQueue));
+    _pushQueueToMediaSession();
+
+    // 确保播放状态不变
+    if (wasPlaying && !_player.playing) _player.play();
+  }
+
   Future<void> playAt(int index) async {
     if (index < 0 || index >= _songQueue.length) return;
     await _player.seek(Duration.zero, index: index);
@@ -236,7 +284,36 @@ class YuugaoAudioHandler extends BaseAudioHandler
     const chunkSize = 30;
     for (var i = 0; i < songs.length; i += chunkSize) {
       final end = (i + chunkSize).clamp(0, songs.length);
-      final ids = songs.sublist(i, end).map((s) => s.id.toString()).toList();
+      final chunk = songs.sublist(i, end);
+      // 过滤掉已缓存的歌曲，避免重复请求
+      final missing = chunk
+          .where((s) => !_resolvedUrls.containsKey(s.id))
+          .map((s) => s.id.toString())
+          .toList();
+      if (missing.isEmpty) continue;
+
+      final res = await MusicManager().songUrl(ids: missing, level: level);
+      final data = res?.data ?? [];
+
+      for (final d in data) {
+        if (d.id != null && d.url != null && d.url!.isNotEmpty) {
+          final type = (d.type ?? 'mp3').toLowerCase();
+          _resolvedUrls[d.id!] = d.url!;
+          _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
+        }
+      }
+    }
+  }
+
+  /// 预热 URL 缓存：批量解析 [songIds] 的音频地址并写入 [_resolvedUrls]。
+  ///
+  /// 与 [_batchResolve] 共享同一缓存，调用方可在构造 [Song] 列表之前
+  /// 提前发出请求，后续 [setQueue] 中的 [_batchResolve] 命中缓存即为空操作。
+  Future<void> preloadUrls(List<int> songIds) async {
+    const chunkSize = 30;
+    for (var i = 0; i < songIds.length; i += chunkSize) {
+      final end = (i + chunkSize).clamp(0, songIds.length);
+      final ids = songIds.sublist(i, end).map((id) => id.toString()).toList();
       if (ids.isEmpty) continue;
 
       final res = await MusicManager().songUrl(ids: ids, level: level);
