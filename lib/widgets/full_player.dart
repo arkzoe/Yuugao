@@ -16,27 +16,10 @@ import 'package:yuugao/widgets/player_info_panel.dart';
 import 'package:yuugao/widgets/player_progress_bar.dart';
 import 'package:yuugao/widgets/playlist_panel.dart';
 
-/// 以全屏 modal 形式打开播放器，带封面 Hero 过渡动画。
-void showFullPlayer(BuildContext context) {
-  Navigator.of(context).push(
-    PageRouteBuilder(
-      opaque: true,
-      transitionDuration: const Duration(milliseconds: 350),
-      reverseTransitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (_, _, _) => const FullPlayer(),
-      transitionsBuilder: (_, anim, _, child) {
-        return SlideTransition(
-          position: Tween(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: FadeTransition(opacity: anim, child: child),
-        );
-      },
-    ),
-  );
-}
-
+/// 全屏播放器（已弃用，保留为参考）。
+///
+/// 当前播放器使用 [PlayerPanel]（SlidingUpPanel），不再通过
+/// Navigator.push 打开独立页面。FM 模式同样复用 PlayerPanel。
 class FullPlayer extends ConsumerStatefulWidget {
   const FullPlayer({super.key});
 
@@ -46,8 +29,11 @@ class FullPlayer extends ConsumerStatefulWidget {
 
 class _FullPlayerState extends ConsumerState<FullPlayer>
     with TickerProviderStateMixin {
-  TabController? _tab;
-  bool _wasFm = false;
+  /// 两个独立 TabController，避免 build() 中动态创建/销毁。
+  /// 原因：在 build() 中 dispose 旧 controller 会导致其仍被
+  /// TabBar/TabBarView 引用时提前销毁，触发"点击即退出"等异常。
+  late final TabController _fmTab;
+  late final TabController _normalTab;
   Color? _prevBg;
   double _dragOffsetY = 0;
 
@@ -63,16 +49,17 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
     Tab(text: '评论', height: 40),
   ];
 
-  TabController _createTab(bool isFm) {
-    _tab?.dispose();
-    final ctrl = TabController(length: isFm ? 3 : 4, vsync: this);
-    _tab = ctrl;
-    return ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _fmTab = TabController(length: 3, vsync: this);
+    _normalTab = TabController(length: 4, vsync: this);
   }
 
   @override
   void dispose() {
-    _tab?.dispose();
+    _fmTab.dispose();
+    _normalTab.dispose();
     super.dispose();
   }
 
@@ -84,11 +71,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer>
     final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
 
-    if (_tab == null || _wasFm != isFm) {
-      _wasFm = isFm;
-      _createTab(isFm);
-    }
-    final tab = _tab!;
+    final tab = isFm ? _fmTab : _normalTab;
 
     final panels = isFm
         ? const <Widget>[PlayerInfoPanel(), LyricPanel(), CommentPanel()]

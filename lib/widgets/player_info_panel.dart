@@ -18,7 +18,8 @@ import 'package:yuugao/widgets/cover_image.dart';
 /// 每位歌手独立一行，点击可跳转到歌手详情页。
 class PlayerInfoPanel extends ConsumerWidget {
   final bool hideCover;
-  const PlayerInfoPanel({super.key, this.hideCover = false});
+  final bool hideSongName;
+  const PlayerInfoPanel({super.key, this.hideCover = false, this.hideSongName = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -84,19 +85,21 @@ class PlayerInfoPanel extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
           ],
-          // ── 歌名 ──
-          Text(
-            song.name,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: colors.textPrimary,
+          // ── 歌名（紧凑模式下由 header 显示，此处可隐藏）──
+          if (!hideSongName) ...[
+            Text(
+              song.name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: colors.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
+          ],
           // ── 歌手列表
           if (artistNames.isNotEmpty && artistNames.any((n) => n.isNotEmpty))
             _buildSectionHeader('歌手', colors)

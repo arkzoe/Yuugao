@@ -78,12 +78,10 @@ class PlayerControlsRow extends ConsumerWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    // 边框环：封面主色 6% 透明度
                     border: Border.all(
                       color: playerColors.accent.withValues(alpha: 0.2),
                       width: 3,
                     ),
-                    // 填充：封面主色 8% 透明度
                     color: playerColors.accent.withValues(alpha: 0.08),
                   ),
                   child: Icon(

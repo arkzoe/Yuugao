@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/providers/player_provider.dart';
+import 'package:yuugao/providers/player_theme_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 
 /// 当前播放队列：高亮当前项，点击切歌，右侧删除按钮。
@@ -17,14 +18,13 @@ class PlaylistPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
-    // 仅监听队列和当前索引，忽略高频变化的位置/缓冲状态
+    final playerColors = ref.watch(playerThemeProvider);
     final queue = ref.watch(playerProvider.select((s) => s.queue));
     final currentIndex =
         ref.watch(playerProvider.select((s) => s.currentIndex));
     if (queue.isEmpty) {
       return Center(
-        child:
-            Text('队列为空', style: TextStyle(color: colors.textSecondary)),
+        child: Text('队列为空', style: TextStyle(color: colors.textSecondary)),
       );
     }
 
@@ -34,10 +34,11 @@ class PlaylistPanel extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Row(
             children: [
-              const Icon(Icons.queue_music, size: 18),
+              Icon(Icons.queue_music, size: 18, color: colors.textPrimary),
               const SizedBox(width: 6),
               Text('播放队列 (${queue.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: colors.textPrimary)),
             ],
           ),
         ),
@@ -45,8 +46,6 @@ class PlaylistPanel extends ConsumerWidget {
           child: ListView.builder(
             itemCount: queue.length,
             itemExtent: _itemHeight,
-            // addRepaintBoundaries: true 为每项包裹 RepaintBoundary，
-            // 滚动时仅重绘新进入视口的行，已回收行不重绘。
             addRepaintBoundaries: true,
             itemBuilder: (context, i) {
               final song = queue[i];
@@ -57,6 +56,7 @@ class PlaylistPanel extends ConsumerWidget {
                 index: i,
                 active: active,
                 colors: colors,
+                accent: playerColors.accent,
                 onTap: () => ref.read(playerProvider.notifier).playAt(i),
                 onRemove: () =>
                     ref.read(playerProvider.notifier).removeAt(i),
@@ -76,6 +76,7 @@ class _PlaylistItem extends StatelessWidget {
   final int index;
   final bool active;
   final ThemeColors colors;
+  final Color accent;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
@@ -85,6 +86,7 @@ class _PlaylistItem extends StatelessWidget {
     required this.index,
     required this.active,
     required this.colors,
+    required this.accent,
     required this.onTap,
     required this.onRemove,
   });
@@ -99,18 +101,15 @@ class _PlaylistItem extends StatelessWidget {
           height: PlaylistPanel._itemHeight,
           child: Row(
             children: [
-              // 左侧：状态图标 / 序号
               SizedBox(
                 width: 28,
                 child: active
-                    ? Icon(Icons.volume_up,
-                        color: colors.primary, size: 18)
+                    ? Icon(Icons.volume_up, color: accent, size: 18)
                     : Text('${index + 1}',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: colors.textSecondary, fontSize: 13)),
               ),
-              // 中间：歌名 + 歌手
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 8),
@@ -124,9 +123,7 @@ class _PlaylistItem extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 14,
-                          color: active
-                              ? colors.primary
-                              : colors.textPrimary,
+                          color: active ? accent : colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 1),
@@ -141,15 +138,14 @@ class _PlaylistItem extends StatelessWidget {
                   ),
                 ),
               ),
-              // 右侧：删除按钮
               IconButton(
                 icon: Icon(Icons.close,
                     size: 18, color: colors.textSecondary),
                 onPressed: onRemove,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                    minWidth: 32, minHeight: 32),
+                constraints:
+                    const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
             ],
           ),

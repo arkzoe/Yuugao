@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yuugao/CloudMusic/yuugao.dart';
 import 'package:yuugao/providers/player_provider.dart';
+import 'package:yuugao/providers/player_theme_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 
 class LyricLine {
@@ -117,6 +118,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
   @override
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
+    final playerColors = ref.watch(playerThemeProvider);
     final songId = ref.watch(playerProvider.select((s) => s.current?.id));
     // 歌曲切换时加载歌词（listen 仅响应变化，不触发初始值）
     ref.listen(playerProvider.select((s) => s.current?.id), (prev, next) {
@@ -153,7 +155,7 @@ class _LyricPanelState extends ConsumerState<LyricPanel> {
             style: TextStyle(
               fontSize: active ? 16 : 14,
               fontWeight: active ? FontWeight.bold : FontWeight.normal,
-              color: active ? colors.primary : colors.textSecondary,
+              color: active ? playerColors.accent : colors.textSecondary,
             ),
           ),
         );
