@@ -35,6 +35,9 @@ class MiniPlayerHiddenNotifier extends Notifier<bool> {
 ///
 /// FM mode only changes the panel's tab layout (3 vs 4 tabs) and opens the
 /// existing panel — no page push needed.
+///
+/// The drawer lives in a Stack at this level so it stays fixed while the
+/// PlayerPanel (body + mini player) translates right to reveal it.
 class MainShell extends ConsumerWidget {
   const MainShell({super.key});
 
@@ -45,35 +48,60 @@ class MainShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final drawerOpen = ref.watch(drawerOpenProvider);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-      transform: Matrix4.translationValues(
-        drawerOpen ? homeDrawerWidth : 0,
-        0,
-        0,
-      ),
-      child: PlayerPanel(
-        body: Navigator(
-          key: innerNavigatorKey,
-          initialRoute: '/',
-          onGenerateRoute: (settings) {
-            switch (settings.name) {
-              case '/':
-                return MaterialPageRoute(
-                  builder: (_) => const HomePage(),
-                  settings: settings,
-                );
-              default:
-                return MaterialPageRoute(
-                  builder: (_) => const Scaffold(
-                    body: Center(child: Text('Unknown route')),
-                  ),
-                );
-            }
-          },
+    return Stack(
+      children: [
+        // ── 第 1 层：抽屉面板（固定不动）──
+        HomeDrawer(
+          onClose: () =>
+              ref.read(drawerOpenProvider.notifier).setOpen(false),
         ),
-      ),
+
+        // ── 第 2 层：主内容 + 迷你播放器（同步平移）──
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(
+            drawerOpen ? homeDrawerWidth : 0,
+            0,
+            0,
+          ),
+          child: PlayerPanel(
+            body: Navigator(
+              key: innerNavigatorKey,
+              initialRoute: '/',
+              onGenerateRoute: (settings) {
+                switch (settings.name) {
+                  case '/':
+                    return MaterialPageRoute(
+                      builder: (_) => const HomePage(),
+                      settings: settings,
+                    );
+                  default:
+                    return MaterialPageRoute(
+                      builder: (_) => const Scaffold(
+                        body: Center(child: Text('Unknown route')),
+                      ),
+                    );
+                }
+              },
+            ),
+          ),
+        ),
+
+        // ── 第 3 层：点击内容区关闭抽屉（仅覆盖抽屉右侧，不遮挡抽屉按钮）──
+        if (drawerOpen)
+          Positioned(
+            left: homeDrawerWidth,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            child: GestureDetector(
+              onTap: () =>
+                  ref.read(drawerOpenProvider.notifier).setOpen(false),
+              behavior: HitTestBehavior.opaque,
+            ),
+          ),
+      ],
     );
   }
 }
