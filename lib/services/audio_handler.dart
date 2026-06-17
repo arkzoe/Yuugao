@@ -45,6 +45,12 @@ class YuugaoAudioHandler extends BaseAudioHandler
   final Map<int, String> _resolvedUrls = {};
   final Map<int, String> _resolvedExt = {};
 
+  // ── 长队列后台扩展 ──
+  SongFetcher? _fetchMore;
+  int _totalCount = 0;
+  int _fetchOffset = 0;
+  bool _fetchingMore = false;
+
   // ── FM 模式 ──
   bool _isFmMode = false;
   bool get isFmMode => _isFmMode;
@@ -114,20 +120,30 @@ class YuugaoAudioHandler extends BaseAudioHandler
     if (songs.isEmpty) return;
 
     final index = initialIndex.clamp(0, songs.length - 1);
+    _fetchMore = fetchMore;
+    _totalCount = totalCount;
+    _fetchOffset = songs.length;
+    _fetchingMore = false;
 
     await _batchResolve(songs);
 
     final sources = <AudioSource>[];
+    final playableSongs = <Song>[];
     for (final s in songs) {
       final src = _buildSource(s);
-      if (src != null) sources.add(src);
+      if (src != null) {
+        sources.add(src);
+        playableSongs.add(s);
+      }
     }
     if (sources.isEmpty) return;
 
-    _songQueue = List.from(songs);
+    _songQueue = playableSongs;
     _songQueueController.add(List.unmodifiable(_songQueue));
 
-    final realIndex = index.clamp(0, sources.length - 1);
+    final targetId = songs[index].id;
+    var realIndex = playableSongs.indexWhere((s) => s.id == targetId);
+    if (realIndex < 0) realIndex = 0;
 
     await _player.setAudioSources(
       sources,
@@ -367,8 +383,44 @@ class YuugaoAudioHandler extends BaseAudioHandler
       mediaItem.add(_songToMediaItem(song));
       // 边播边存
       _cacheSong(song);
+      _maybeFetchMore(idx);
     }
     onPersistNeeded?.call();
+  }
+
+  Future<void> _maybeFetchMore(int index) async {
+    final fetchMore = _fetchMore;
+    if (fetchMore == null || _fetchingMore || _isFmMode) return;
+    if (_totalCount > 0 && _songQueue.length >= _totalCount) return;
+    if (index < _songQueue.length - 3) return;
+
+    _fetchingMore = true;
+    try {
+      final existingIds = _songQueue.map((s) => s.id).toSet();
+      final more = await fetchMore(_fetchOffset, 30);
+      _fetchOffset += more.length;
+      final fresh = more.where((s) => !existingIds.contains(s.id)).toList();
+      if (fresh.isEmpty) return;
+
+      await _batchResolve(fresh);
+      var added = false;
+      for (final s in fresh) {
+        final src = _buildSource(s);
+        if (src != null) {
+          await _player.addAudioSource(src);
+          _songQueue.add(s);
+          added = true;
+        }
+      }
+      if (added) {
+        _songQueueController.add(List.unmodifiable(_songQueue));
+        _pushQueueToMediaSession();
+      }
+    } catch (_) {
+      // 后台扩展失败不打断当前播放。
+    } finally {
+      _fetchingMore = false;
+    }
   }
 
   /// 仅重建控件（不改变播放状态），用于喜欢状态变化后刷新通知栏图标。
@@ -640,30 +692,35 @@ class YuugaoAudioHandler extends BaseAudioHandler
   ///
   /// 通过 songQueueStream 触发 Provider 更新；Provider 侧已改为引用比较
   /// 而非长度比较，所以相同长度 / 相同 ID 的元数据替换也会被 UI 消费。
-  void _updateFmMetadata(Future<SongDetailEntity?> detailFuture, int currentId) {
-    detailFuture.then((detailRes) {
-      if (detailRes == null ||
-          detailRes.songs == null ||
-          detailRes.songs!.isEmpty) {
-        return;
-      }
-      final complete = detailRes.songs!
-          .map((s) => Song.fromSongDetail(s))
-          .where((s) => s.id > 0)
-          .toList();
-      if (complete.isEmpty) return;
+  void _updateFmMetadata(
+    Future<SongDetailEntity?> detailFuture,
+    int currentId,
+  ) {
+    detailFuture
+        .then((detailRes) {
+          if (detailRes == null ||
+              detailRes.songs == null ||
+              detailRes.songs!.isEmpty) {
+            return;
+          }
+          final complete = detailRes.songs!
+              .map((s) => Song.fromSongDetail(s))
+              .where((s) => s.id > 0)
+              .toList();
+          if (complete.isEmpty) return;
 
-      _songQueue = complete;
-      _fmCurrentTrack = complete.firstWhere(
-        (s) => s.id == currentId,
-        orElse: () => complete.first,
-      );
-      _songQueueController.add(List.unmodifiable(_songQueue));
-      _pushQueueToMediaSession();
-      mediaItem.add(_songToMediaItem(_fmCurrentTrack!));
-    }).catchError((_) {
-      // songDetail 失败不影响播放，保留 FM 原始数据
-    });
+          _songQueue = complete;
+          _fmCurrentTrack = complete.firstWhere(
+            (s) => s.id == currentId,
+            orElse: () => complete.first,
+          );
+          _songQueueController.add(List.unmodifiable(_songQueue));
+          _pushQueueToMediaSession();
+          mediaItem.add(_songToMediaItem(_fmCurrentTrack!));
+        })
+        .catchError((_) {
+          // songDetail 失败不影响播放，保留 FM 原始数据
+        });
   }
 
   /// FM 下一首：队列内还有歌就切过去，否则拉取新一批。
