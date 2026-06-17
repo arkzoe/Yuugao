@@ -19,6 +19,7 @@ class SongCommentsPage extends ConsumerStatefulWidget {
 
 class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
   bool _loading = true;
+  String? _error;
   List<CommentItem> _hot = [];
   List<CommentItem> _latest = [];
 
@@ -29,15 +30,21 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await MusicManager().songComments(id: widget.song.id);
       if (res == null) {
-        setState(() => _loading = false);
-        return;
+        _error = '评论加载失败，请重试';
+      } else {
+        _hot = res.hotComments ?? [];
+        _latest = res.comments ?? [];
       }
-      _hot = res.hotComments ?? [];
-      _latest = res.comments ?? [];
-    } catch (_) {}
+    } catch (_) {
+      _error = '评论加载失败，请重试';
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -52,6 +59,8 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? _errorView(colors)
           : ListView(
               children: [
                 // 歌曲信息头
@@ -130,6 +139,19 @@ class _SongCommentsPageState extends ConsumerState<SongCommentsPage> {
                   ..._latest.map((c) => _commentTile(c, colors)),
               ],
             ),
+    );
+  }
+
+  Widget _errorView(ThemeColors colors) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_error!, style: TextStyle(color: colors.textSecondary)),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _load, child: const Text('重试')),
+        ],
+      ),
     );
   }
 

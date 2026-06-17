@@ -17,6 +17,7 @@ class DailySongsPage extends ConsumerStatefulWidget {
 class _DailySongsPageState extends ConsumerState<DailySongsPage> {
   List<Song> _songs = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -25,12 +26,18 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await MusicManager().recommendSongs();
       _songs = (res?.data?.dailySongs ?? [])
           .map((s) => Song.fromDailySong(s))
           .toList();
-    } catch (_) {}
+    } catch (_) {
+      _error = '每日推荐加载失败，请重试';
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -45,6 +52,8 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? _errorView(colors)
                   : _songs.isEmpty
                   ? Center(
                       child: Text(
@@ -70,6 +79,19 @@ class _DailySongsPageState extends ConsumerState<DailySongsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _errorView(ThemeColors colors) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_error!, style: TextStyle(color: colors.textSecondary)),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _load, child: const Text('重试')),
+        ],
       ),
     );
   }
