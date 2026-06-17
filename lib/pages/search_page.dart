@@ -37,6 +37,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   final _loading = <int, bool>{};
   final _searched = <int, bool>{};
+  int _searchGeneration = 0;
 
   @override
   void initState() {
@@ -81,6 +82,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     if (kw.isEmpty) return;
     FocusScope.of(context).unfocus();
     final type = _currentType;
+    final generation = ++_searchGeneration;
     setState(() => _loading[type] = true);
     try {
       final res = await MusicManager().search(
@@ -88,7 +90,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         type: type,
         limit: 50,
       );
-      if (!mounted) return;
+      if (!_isLatestSearch(generation, kw)) return;
       switch (type) {
         case _kTypeSong:
           _songResults = (res?.result?.songs ?? [])
@@ -103,12 +105,18 @@ class _SearchPageState extends ConsumerState<SearchPage>
       }
       _searched[type] = true;
     } catch (_) {
-      if (!mounted) return;
+      if (!_isLatestSearch(generation, kw)) return;
       _clearType(type);
     }
-    if (mounted) {
+    if (_isLatestSearch(generation, kw)) {
       setState(() => _loading[type] = false);
     }
+  }
+
+  bool _isLatestSearch(int generation, String keyword) {
+    return mounted &&
+        generation == _searchGeneration &&
+        _controller.text.trim() == keyword;
   }
 
   void _clearType(int type) {
@@ -270,16 +278,17 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 )
               : null,
           onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => ArtistDetailPage(
-                artistId: a.id ?? 0,
-                title: a.name ?? '',
-                coverUrl: (a.picUrl?.isNotEmpty == true
-                        ? a.picUrl
-                        : a.img1v1Url) ??
-                    '',
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ArtistDetailPage(
+                  artistId: a.id ?? 0,
+                  title: a.name ?? '',
+                  coverUrl:
+                      (a.picUrl?.isNotEmpty == true ? a.picUrl : a.img1v1Url) ??
+                      '',
+                ),
               ),
-            ));
+            );
           },
         );
       },
@@ -313,13 +322,15 @@ class _SearchPageState extends ConsumerState<SearchPage>
             style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
           onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AlbumDetailPage(
-                albumId: a.id ?? 0,
-                title: a.name ?? '',
-                coverUrl: a.picUrl ?? '',
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AlbumDetailPage(
+                  albumId: a.id ?? 0,
+                  title: a.name ?? '',
+                  coverUrl: a.picUrl ?? '',
+                ),
               ),
-            ));
+            );
           },
         );
       },
@@ -359,13 +370,15 @@ class _SearchPageState extends ConsumerState<SearchPage>
             style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
           onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => PlaylistDetailPage(
-                playlistId: p.id ?? 0,
-                title: p.name ?? '',
-                coverUrl: p.coverImgUrl ?? '',
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PlaylistDetailPage(
+                  playlistId: p.id ?? 0,
+                  title: p.name ?? '',
+                  coverUrl: p.coverImgUrl ?? '',
+                ),
               ),
-            ));
+            );
           },
         );
       },
