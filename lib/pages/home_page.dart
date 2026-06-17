@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:yuugao/pages/main_shell.dart';
 import 'package:yuugao/pages/search_page.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
@@ -28,13 +29,23 @@ class _HomePageState extends ConsumerState<HomePage> {
     Future.microtask(_load);
   }
 
-  void _toggleDrawer() => setState(() => _isDrawerOpen = !_isDrawerOpen);
+  void _toggleDrawer() {
+    setState(() => _isDrawerOpen = !_isDrawerOpen);
+    ref.read(drawerOpenProvider.notifier).setOpen(_isDrawerOpen);
+  }
+
   void _openDrawer() {
-    if (!_isDrawerOpen) setState(() => _isDrawerOpen = true);
+    if (!_isDrawerOpen) {
+      setState(() => _isDrawerOpen = true);
+      ref.read(drawerOpenProvider.notifier).setOpen(true);
+    }
   }
 
   void _closeDrawer() {
-    if (_isDrawerOpen) setState(() => _isDrawerOpen = false);
+    if (_isDrawerOpen) {
+      setState(() => _isDrawerOpen = false);
+      ref.read(drawerOpenProvider.notifier).setOpen(false);
+    }
   }
 
   Future<void> _load() async {
