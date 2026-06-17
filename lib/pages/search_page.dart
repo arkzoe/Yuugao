@@ -28,6 +28,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     with TickerProviderStateMixin {
   final _controller = TextEditingController();
   late final TabController _tabController;
+  final _scrollCtrl = ScrollController();
 
   // 每个 tab 独立的结果 + 状态
   List<Song> _songResults = [];
@@ -39,15 +40,24 @@ class _SearchPageState extends ConsumerState<SearchPage>
   final _searched = <int, bool>{};
   int _searchGeneration = 0;
 
+  /// 分页状态：每类搜索结果独立的 offset / hasMore / loadingMore
+  final _offsets = <int, int>{};
+  final _hasMore = <int, bool>{};
+  final _loadingMore = <int, bool>{};
+  static const _kPageSize = 30;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChange);
+    _scrollCtrl.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
     _controller.dispose();
     _tabController.removeListener(_onTabChange);
     _tabController.dispose();
@@ -62,6 +72,14 @@ class _SearchPageState extends ConsumerState<SearchPage>
       _search();
     }
     setState(() {}); // 刷新 UI 以切换列表
+  }
+
+  /// 滚动到底部附近时自动加载更多
+  void _onScroll() {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
   }
 
   int get _currentType {
@@ -83,12 +101,17 @@ class _SearchPageState extends ConsumerState<SearchPage>
     FocusScope.of(context).unfocus();
     final type = _currentType;
     final generation = ++_searchGeneration;
+
+    // 新搜索：重置分页状态
+    _offsets[type] = 0;
+    _hasMore[type] = true;
+
     setState(() => _loading[type] = true);
     try {
       final res = await MusicManager().search(
         keywords: kw,
         type: type,
-        limit: 50,
+        limit: _kPageSize,
       );
       if (!_isLatestSearch(generation, kw)) return;
       switch (type) {
@@ -96,12 +119,20 @@ class _SearchPageState extends ConsumerState<SearchPage>
           _songResults = (res?.result?.songs ?? [])
               .map((s) => Song.fromSearchItem(s))
               .toList();
+          _offsets[type] = _songResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
         case _kTypeArtist:
           _artistResults = res?.result?.artists ?? [];
+          _offsets[type] = _artistResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
         case _kTypeAlbum:
           _albumResults = res?.result?.albums ?? [];
+          _offsets[type] = _albumResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
         case _kTypePlaylist:
           _playlistResults = res?.result?.playlists ?? [];
+          _offsets[type] = _playlistResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
       }
       _searched[type] = true;
     } catch (_) {
@@ -119,6 +150,64 @@ class _SearchPageState extends ConsumerState<SearchPage>
         _controller.text.trim() == keyword;
   }
 
+  /// 滚动触底时加载下一页结果并追加到当前 tab 的列表中。
+  Future<void> _loadMore() async {
+    final type = _currentType;
+    if (_loadingMore[type] == true) return;
+    if (_hasMore[type] != true) return;
+    if (_loading[type] == true) return;
+
+    final kw = _controller.text.trim();
+    if (kw.isEmpty) return;
+
+    final offset = _offsets[type] ?? 0;
+    // 快照当前搜索代次，防止新搜索发生后旧 _loadMore 结果污染新数据
+    final generation = _searchGeneration;
+
+    setState(() => _loadingMore[type] = true);
+    try {
+      final res = await MusicManager().search(
+        keywords: kw,
+        type: type,
+        limit: _kPageSize,
+        offset: offset,
+      );
+      if (!mounted || generation != _searchGeneration) return;
+      switch (type) {
+        case _kTypeSong:
+          final newSongs = (res?.result?.songs ?? [])
+              .map((s) => Song.fromSearchItem(s))
+              .toList();
+          _songResults.addAll(newSongs);
+          _offsets[type] = _songResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
+        case _kTypeArtist:
+          final newArtists = res?.result?.artists ?? [];
+          _artistResults.addAll(newArtists);
+          _offsets[type] = _artistResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
+        case _kTypeAlbum:
+          final newAlbums = res?.result?.albums ?? [];
+          _albumResults.addAll(newAlbums);
+          _offsets[type] = _albumResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
+        case _kTypePlaylist:
+          final newPlaylists = res?.result?.playlists ?? [];
+          _playlistResults.addAll(newPlaylists);
+          _offsets[type] = _playlistResults.length;
+          _hasMore[type] = res?.result?.hasMore ?? false;
+      }
+    } catch (_) {
+      // 加载更多失败静默处理，不打断浏览
+    }
+    if (mounted && generation == _searchGeneration) {
+      setState(() => _loadingMore[type] = false);
+    }
+  }
+
+  /// 当前 tab 是否正在加载更多
+  bool get _isLoadingMore => _loadingMore[_currentType] == true;
+
   void _clearType(int type) {
     switch (type) {
       case _kTypeSong:
@@ -130,6 +219,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
       case _kTypePlaylist:
         _playlistResults = [];
     }
+    _offsets[type] = 0;
+    _hasMore[type] = false;
   }
 
   bool get _isLoading => _loading[_currentType] == true;
@@ -231,23 +322,41 @@ class _SearchPageState extends ConsumerState<SearchPage>
   // ═══ 单曲列表 ═══
 
   Widget _buildSongList() {
+    final count = _songResults.length;
     return ListView.builder(
-      itemCount: _songResults.length,
-      itemBuilder: (context, i) => SongTile(
-        song: _songResults[i],
-        queue: _songResults,
-        index: i,
-        showCover: false,
-      ),
+      controller: _scrollCtrl,
+      itemCount: count + (_isLoadingMore ? 1 : 0),
+      itemBuilder: (context, i) {
+        if (i >= count) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return SongTile(
+          song: _songResults[i],
+          queue: _songResults,
+          index: i,
+          showCover: false,
+        );
+      },
     );
   }
 
   // ═══ 歌手列表 ═══
 
   Widget _buildArtistList(ThemeColors colors) {
+    final count = _artistResults.length;
     return ListView.builder(
-      itemCount: _artistResults.length,
+      controller: _scrollCtrl,
+      itemCount: count + (_isLoadingMore ? 1 : 0),
       itemBuilder: (context, i) {
+        if (i >= count) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
         final a = _artistResults[i];
         final subtitle = [
           if ((a.musicSize ?? 0) > 0) '单曲: ${a.musicSize}',
@@ -298,9 +407,17 @@ class _SearchPageState extends ConsumerState<SearchPage>
   // ═══ 专辑列表 ═══
 
   Widget _buildAlbumList(ThemeColors colors) {
+    final count = _albumResults.length;
     return ListView.builder(
-      itemCount: _albumResults.length,
+      controller: _scrollCtrl,
+      itemCount: count + (_isLoadingMore ? 1 : 0),
       itemBuilder: (context, i) {
+        if (i >= count) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
         final a = _albumResults[i];
         return ListTile(
           leading: ClipRRect(
@@ -340,9 +457,17 @@ class _SearchPageState extends ConsumerState<SearchPage>
   // ═══ 歌单列表 ═══
 
   Widget _buildPlaylistList(ThemeColors colors) {
+    final count = _playlistResults.length;
     return ListView.builder(
-      itemCount: _playlistResults.length,
+      controller: _scrollCtrl,
+      itemCount: count + (_isLoadingMore ? 1 : 0),
       itemBuilder: (context, i) {
+        if (i >= count) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
         final p = _playlistResults[i];
         final sub = [
           '${p.trackCount ?? 0}首',
