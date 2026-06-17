@@ -476,6 +476,11 @@ class YuugaoAudioHandler extends BaseAudioHandler
   // ═════════════════════════════════════════════════════════════
 
   /// 启动 FM：拉取一批歌曲，批量解析 URL，构建队列并播放。
+  ///
+  /// 关键顺序：先推送队列到 UI 层 + mediaSession，再调用 setAudioSources。
+  /// 若顺序相反，setAudioSources 触发 currentIndexStream → Provider 在
+  /// songQueueStream 还未更新时就把 currentIndex 设为 0，导致 UI 短暂显示
+  /// 旧歌单的第一首歌（而非 FM 歌曲）。
   Future<bool> startFm() async {
     if (_fmLoading) return false;
     _fmLoading = true;
@@ -499,14 +504,22 @@ class YuugaoAudioHandler extends BaseAudioHandler
       _resolvedExt.clear();
 
       _songQueue = songs;
+
+      // ★ 先推送队列到 UI 层和 mediaSession，再切换音频源。
+      // 这样当 setAudioSources 触发 currentIndexStream 时，
+      // Provider 的 songQueueStream 已经收到 FM 队列，
+      // currentIndex=0 会指向正确的 FM 歌曲而非旧歌单第一首。
+      _songQueueController.add(List.unmodifiable(_songQueue));
+      _pushQueueToMediaSession();
+      // 同时立即设置 mediaItem，让通知栏/锁屏显示 FM 歌曲信息。
+      mediaItem.add(_songToMediaItem(songs.first));
+
       await _player.setAudioSources(
         sources,
         initialIndex: 0,
         initialPosition: Duration.zero,
       );
       _player.play();
-      _songQueueController.add(List.unmodifiable(_songQueue));
-      _pushQueueToMediaSession();
       _cacheSong(songs.first);
       return true;
     } catch (_) {

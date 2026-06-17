@@ -339,6 +339,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     // FM 模式由 AudioService 内部双缓冲接管，队列会在调用后整体替换，
     // 必须等 _audio.next() 完成再同步状态，否则 UI 停留在第一首。
     if (state.isFmMode) {
+      _intendedIndex = 0; // 防止 FM 切歌时 just_audio 的中间态 index
       await _audio.next();
       state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
       return;
@@ -437,7 +438,12 @@ await _audio.setShuffle(false);
   // ═══ 私人 FM ═══
 
   /// 启动私人 FM 模式。
+  ///
+  /// 设置 [_intendedIndex] 防止 just_audio 在
+  /// AudioPlayer.setAudioSources 期间发出的中间态 index
+  /// （null、旧 index 等）污染 UI。
   Future<bool> startFm() async {
+    _intendedIndex = 0;
     final ok = await _audio.startFm();
     if (ok) {
       state = state.copyWith(
@@ -451,12 +457,14 @@ await _audio.setShuffle(false);
 
   /// FM 切到下一首。
   Future<void> nextFm() async {
+    _intendedIndex = 0;
     await _audio.nextFm();
     state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
   }
 
   /// FM 垃圾桶（跳过 + 标记不喜欢）。
   Future<void> trashFm() async {
+    _intendedIndex = 0;
     await _audio.trashFm();
     state = state.copyWith(queue: _audio.songQueue, currentIndex: 0);
   }
