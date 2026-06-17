@@ -31,7 +31,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void initState() {
     super.initState();
     _cacheInfoFuture = CacheService.instance.cacheInfo();
-    ref.read(miniPlayerHiddenProvider.notifier).setHidden(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(miniPlayerHiddenProvider.notifier).setHidden(true);
+    });
   }
 
   @override
