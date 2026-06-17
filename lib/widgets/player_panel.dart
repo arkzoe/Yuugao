@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 
 import 'package:yuugao/models/song.dart';
+import 'package:yuugao/pages/main_shell.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/player_theme_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
@@ -97,6 +98,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
     final colors = ref.watch(currentColorsProvider);
     final playerColors = ref.watch(playerThemeProvider);
+    final miniPlayerHidden = ref.watch(miniPlayerHiddenProvider);
 
     const panels = <Widget>[
       PlayerInfoPanel(hideCover: true, hideSongName: true),
@@ -109,7 +111,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
 
     return SlidingUpPanel(
       controller: _panelCtrl,
-      minHeight: song != null ? miniH : 0,
+      minHeight: (song != null && !miniPlayerHidden) ? miniH : 0,
       maxHeight: screenH,
       color: playerColors.background,
       parallaxEnabled: false,
@@ -139,7 +141,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
         }
       },
       // ═══ collapsed：迷你播放器 ═══
-      collapsed: song == null
+      collapsed: (song == null || miniPlayerHidden)
           ? const SizedBox.shrink()
           : _buildMiniPlayer(song, isPlaying, colors, playerColors, screenW),
       // ═══ panelBuilder：完整内容 ═══

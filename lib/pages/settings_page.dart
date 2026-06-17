@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:yuugao/pages/main_shell.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/services/cache_service.dart';
 
@@ -30,6 +31,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void initState() {
     super.initState();
     _cacheInfoFuture = CacheService.instance.cacheInfo();
+    ref.read(miniPlayerHiddenProvider.notifier).setHidden(true);
+  }
+
+  @override
+  void dispose() {
+    ref.read(miniPlayerHiddenProvider.notifier).setHidden(false);
+    super.dispose();
   }
 
   void _refreshCacheInfo() {
