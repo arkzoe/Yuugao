@@ -8,8 +8,15 @@ import 'package:yuugao/services/cache_service.dart';
 ///
 /// 各设置项按功能分组到圆角卡片中，每组有标题头。
 /// 开关使用图标切换替代标准 Switch，视觉上更统一。
-class SettingsPage extends ConsumerWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+  late Future<CacheInfo> _cacheInfoFuture;
 
   static const _qualityOptions = [
     ('standard', '标准'),
@@ -18,6 +25,18 @@ class SettingsPage extends ConsumerWidget {
     ('hires', 'Hi-Res'),
     ('jymaster', '臻品母带'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheInfoFuture = CacheService.instance.cacheInfo();
+  }
+
+  void _refreshCacheInfo() {
+    setState(() {
+      _cacheInfoFuture = CacheService.instance.cacheInfo();
+    });
+  }
 
   // ── 对话框 ──
 
@@ -63,7 +82,7 @@ class SettingsPage extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
@@ -176,7 +195,7 @@ class SettingsPage extends ConsumerWidget {
               colors: colors,
               children: [
                 FutureBuilder<CacheInfo>(
-                  future: CacheService.instance.cacheInfo(),
+                  future: _cacheInfoFuture,
                   builder: (context, snapshot) {
                     final info = snapshot.data;
                     final sizeMB = (info?.totalBytes ?? 0) ~/ (1024 * 1024);
@@ -215,6 +234,7 @@ class SettingsPage extends ConsumerWidget {
                                     onPressed: () async {
                                       await CacheService.instance.clearAll();
                                       if (context.mounted) {
+                                        _refreshCacheInfo();
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
@@ -298,29 +318,29 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Material(
         color: colors.card,
         borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: colors.textSecondary.withValues(alpha: 0.7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textSecondary.withValues(alpha: 0.7),
+                ),
               ),
             ),
-          ),
-          ...children,
-          const SizedBox(height: 4),
-        ],
+            ...children,
+            const SizedBox(height: 4),
+          ],
+        ),
       ),
     );
   }
