@@ -8,7 +8,6 @@ import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
 import 'package:yuugao/widgets/home_action_buttons.dart';
-import 'package:yuugao/widgets/home_drawer.dart';
 import 'package:yuugao/widgets/playlist_card.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -19,7 +18,6 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  bool _isDrawerOpen = false;
   int _lastHour = -1;
   String _cachedGreeting = '';
 
@@ -27,25 +25,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     Future.microtask(_load);
-  }
-
-  void _toggleDrawer() {
-    setState(() => _isDrawerOpen = !_isDrawerOpen);
-    ref.read(drawerOpenProvider.notifier).setOpen(_isDrawerOpen);
-  }
-
-  void _openDrawer() {
-    if (!_isDrawerOpen) {
-      setState(() => _isDrawerOpen = true);
-      ref.read(drawerOpenProvider.notifier).setOpen(true);
-    }
-  }
-
-  void _closeDrawer() {
-    if (_isDrawerOpen) {
-      setState(() => _isDrawerOpen = false);
-      ref.read(drawerOpenProvider.notifier).setOpen(false);
-    }
   }
 
   Future<void> _load() async {
@@ -69,93 +48,72 @@ class _HomePageState extends ConsumerState<HomePage> {
     final colors = ref.watch(currentColorsProvider);
     final user = ref.watch(userProvider);
     final playlistState = ref.watch(playlistProvider);
+    final drawerOpen = ref.watch(drawerOpenProvider);
 
     return Stack(
       children: [
-        // ── 第 1 层：抽屉面板（底层）──
-        HomeDrawer(onClose: _closeDrawer),
-
-        // ── 第 2 层：主页面 + 平移动画 ──
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(
-            _isDrawerOpen ? homeDrawerWidth : 0,
-            0,
-            0,
-          ),
-          child: Scaffold(
-            body: SafeArea(
-              child: Column(
-                children: [
-                  _buildAppBar(user.avatarUrl, colors),
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        children: [
-                          Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                            child: Text(
-                              '${_greeting()}，${user.nickname}~',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: colors.textSecondary,
-                              ),
+        // ── 主内容（平移由 MainShell 的 AnimatedContainer 处理）──
+        Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildAppBar(user.avatarUrl, colors, drawerOpen),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          child: Text(
+                            '${_greeting()}，${user.nickname}~',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: colors.textSecondary,
                             ),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: HomeActionButtons(),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildPlaylistSection(playlistState, colors),
-                        ],
-                      ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: HomeActionButtons(),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildPlaylistSection(playlistState, colors),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
 
-        // ── 第 3 层：左边缘拖拽打开 ──
-        if (!_isDrawerOpen)
+        // ── 左边缘拖拽打开抽屉（仅关闭时显示）──
+        if (!drawerOpen)
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
             width: 20,
-            child: _EdgeDragDetector(onDragOpen: _openDrawer),
-          ),
-
-        // ── 第 4 层：点击主页区域关闭（仅覆盖抽屉右侧，不与抽屉按钮重叠）──
-        if (_isDrawerOpen)
-          Positioned(
-            left: homeDrawerWidth,
-            top: 0,
-            right: 0,
-            bottom: 0,
-            child: GestureDetector(
-              onTap: _closeDrawer,
-              behavior: HitTestBehavior.opaque,
+            child: _EdgeDragDetector(
+              onDragOpen: () =>
+                  ref.read(drawerOpenProvider.notifier).setOpen(true),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildAppBar(String avatar, ThemeColors colors) {
+  Widget _buildAppBar(String avatar, ThemeColors colors, bool drawerOpen) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
           GestureDetector(
-            onTap: _toggleDrawer,
+            onTap: () =>
+                ref.read(drawerOpenProvider.notifier).setOpen(!drawerOpen),
             child: ClipOval(
               child: CoverImage(url: avatar, size: 36, radius: 18),
             ),
@@ -186,18 +144,16 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     final liked = all.first;
-    final rest = all.sublist(1); // 剩余歌单（空列表时不会触发，all 非空已在外层保证）
+    final rest = all.sublist(1);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── 我喜欢的音乐 ──
         _sectionHeader(Icons.favorite, '我喜欢的音乐', colors),
         PlaylistCard(playlist: liked),
 
         if (rest.isNotEmpty) ...[
           const SizedBox(height: 12),
-          // ── 我的歌单 ──
           _sectionHeader(Icons.queue_music, '我的歌单', colors),
           ListView.builder(
             shrinkWrap: true,
