@@ -35,7 +35,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     // 登录成功后跳转到首页。_AuthGate 也会同步切换，这里作为显式导航兜底。
     ref.listen(userProvider.select((s) => s.status), (prev, next) {
       if (next == AuthStatus.authenticated && mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil('/main', (_) => false);
       }
     });
 

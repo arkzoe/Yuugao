@@ -7,7 +7,6 @@ import 'package:yuugao/models/song.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/widgets/cover_image.dart';
-import 'package:yuugao/widgets/player_panel.dart';
 
 /// 云盘页面 — 展示用户上传到网易云云盘的歌曲列表。
 ///
@@ -129,57 +128,55 @@ class _CloudPageState extends ConsumerState<CloudPage> {
   Widget build(BuildContext context) {
     final colors = ref.watch(currentColorsProvider);
 
-    return PlayerPanel(
-      body: Scaffold(
-        appBar: AppBar(
-          title: Row(
-            children: [
-              Text('云盘',
-                  style: TextStyle(color: colors.textPrimary, fontSize: 18)),
-              const SizedBox(width: 8),
-              Icon(Icons.cloud_queue, color: colors.primary, size: 20),
-            ],
-          ),
-          backgroundColor: colors.background,
-          elevation: 0,
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Text('云盘',
+                style: TextStyle(color: colors.textPrimary, fontSize: 18)),
+            const SizedBox(width: 8),
+            Icon(Icons.cloud_queue, color: colors.primary, size: 20),
+          ],
         ),
-        body: RefreshIndicator(
-          onRefresh: _refresh,
-          child: _items.isEmpty && _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _items.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.cloud_off,
-                              size: 64, color: colors.textSecondary),
-                          const SizedBox(height: 16),
-                          Text('云盘暂无歌曲',
-                              style: TextStyle(
-                                  color: colors.textSecondary, fontSize: 16)),
-                          const SizedBox(height: 8),
-                          Text('你可以通过网易云音乐 App 上传歌曲',
-                              style: TextStyle(
-                                  color: colors.textSecondary, fontSize: 12)),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      controller: _scroll,
-                      padding: const EdgeInsets.only(bottom: 80),
-                      itemCount: _items.length + (_hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= _items.length) {
-                          return const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-                        return _buildItem(_items[index], colors);
-                      },
+        backgroundColor: colors.background,
+        elevation: 0,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _items.isEmpty && _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_off,
+                            size: 64, color: colors.textSecondary),
+                        const SizedBox(height: 16),
+                        Text('云盘暂无歌曲',
+                            style: TextStyle(
+                                color: colors.textSecondary, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        Text('你可以通过网易云音乐 App 上传歌曲',
+                            style: TextStyle(
+                                color: colors.textSecondary, fontSize: 12)),
+                      ],
                     ),
-        ),
+                  )
+                : ListView.builder(
+                    controller: _scroll,
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemCount: _items.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _items.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      return _buildItem(_items[index], colors);
+                    },
+                  ),
       ),
     );
   }

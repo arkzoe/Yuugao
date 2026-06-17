@@ -19,13 +19,22 @@ import 'package:yuugao/widgets/player_progress_bar.dart';
 import 'package:yuugao/widgets/playlist_panel.dart';
 import 'package:yuugao/widgets/player_info_panel.dart';
 
-/// 封面只有一份在 header 中动画。
+/// 全局 PanelController，暴露给 FM 按钮等外部调用方。
 ///
-/// 折叠态 (panel height=60)：header 顶部 60px 可见
-///   → 封面左上角小圆(44) + 右侧歌名/歌手 + 播放按钮 + 顶部进度条
-/// 展开态 (panel height=全屏)：header 全部可见
-///   → 封面移到大尺寸(240)居中 + 歌名/歌手移到下方 body
-///   → body: 歌名/歌手 + TabBarView + 进度条 + 控制 + TabBar
+/// [PlayerPanel] 在 initState 中将自己创建的 controller 赋值给此 provider，
+/// 确保外部始终拿到当前挂载的 panel 的 controller。
+final panelControllerProvider = Provider<PanelController?>((ref) {
+  // 由 PlayerPanel 的实际实例通过 _registry 赋值
+  return _panelControllerRegistry;
+});
+
+PanelController? _panelControllerRegistry;
+
+/// 风格单面板播放器。
+///
+/// 折叠态显示迷你播放器（collapsed），展开态显示完整内容（panelBuilder），
+/// 背景层叠加模糊封面 + 渐变 + 粒子动画。
+
 class PlayerPanel extends ConsumerStatefulWidget {
   final Widget body;
   const PlayerPanel({super.key, required this.body});
@@ -37,20 +46,18 @@ class PlayerPanel extends ConsumerStatefulWidget {
 class _PlayerPanelState extends ConsumerState<PlayerPanel>
     with TickerProviderStateMixin {
   final _panelCtrl = PanelController();
-  final _innerCtrl = PanelController();
-  TabController? _tab;
-  bool _wasFm = false;
-  double _panelPos = 0.0;
 
-  static const _miniCover = 44.0;
-  static const _bigCover = 240.0;
+  late final TabController _tab;
 
-  static const _fmTabs = [
-    Tab(text: '信息', height: 40),
-    Tab(text: '歌词', height: 40),
-    Tab(text: '评论', height: 40),
-  ];
-  static const _normalTabs = [
+  /// 当前选中的 tab 索引；null 表示未选中任何 tab（TabBarView 隐藏）。
+  int? _activeTab;
+
+  /// 防止 onPanelSlide 中展开→折叠→展开的循环振荡。
+  bool _resettingPanel = false;
+
+  static const _coverSz = 240.0;
+
+  static const _tabs = [
     Tab(text: '信息', height: 40),
     Tab(text: '列表', height: 40),
     Tab(text: '歌词', height: 40),
@@ -58,252 +65,169 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 4, vsync: this);
+    _tab.addListener(_onTabChanged);
+    // 注册全局 controller，供 FM 按钮等外部调用
+    _panelControllerRegistry = _panelCtrl;
+  }
+
+  @override
   void dispose() {
-    _tab?.dispose();
+    _panelControllerRegistry = null;
+    _tab.dispose();
     super.dispose();
   }
 
-  TabController _ensureTab(bool isFm) {
-    if (_tab == null || _wasFm != isFm) {
-      _wasFm = isFm;
-      _tab?.dispose();
-      _tab = TabController(length: isFm ? 3 : 4, vsync: this);
+  void _onTabChanged() {
+    if (_activeTab != null && _tab.index != _activeTab) {
+      setState(() => _activeTab = _tab.index);
     }
-    return _tab!;
   }
-
-  double _lerp(double a, double b, double t) => a + (b - a) * t;
 
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    final miniH = _miniCover + 16 + bottomPad; // ~60
+    final screenH = MediaQuery.of(context).size.height;
+    final screenW = MediaQuery.of(context).size.width;
+    final miniH = 44.0 + 16 + bottomPad; // ~60px
 
     final song = ref.watch(playerProvider.select((s) => s.current));
-    final isFm = ref.watch(playerProvider.select((s) => s.isFmMode));
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
     final colors = ref.watch(currentColorsProvider);
     final playerColors = ref.watch(playerThemeProvider);
 
-    final tab = _ensureTab(isFm);
-    final panels = isFm
-        ? const <Widget>[
-            PlayerInfoPanel(hideCover: true),
-            LyricPanel(),
-            CommentPanel(),
-          ]
-        : const <Widget>[
-            PlayerInfoPanel(hideCover: true),
-            PlaylistPanel(),
-            LyricPanel(),
-            CommentPanel(),
-          ];
+    const panels = <Widget>[
+      PlayerInfoPanel(hideCover: true, hideSongName: true),
+      PlaylistPanel(),
+      LyricPanel(),
+      CommentPanel(),
+    ];
 
     final coverUrl = song?.coverUrl ?? '';
 
     return SlidingUpPanel(
       controller: _panelCtrl,
       minHeight: song != null ? miniH : 0,
-      maxHeight: MediaQuery.of(context).size.height,
+      maxHeight: screenH,
+      color: playerColors.background,
+      parallaxEnabled: false,
       backdropEnabled: true,
-      backdropOpacity: _panelPos * 0.3,
+      backdropOpacity: 0.25,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      parallaxEnabled: true,
-      parallaxOffset: 0.3,
       onPanelSlide: (pos) {
-        if (mounted) setState(() => _panelPos = pos);
+        // ★ tab 栏展开时下滑：先折叠 tab 栏，阻止面板关闭
+        if (_activeTab != null && pos < 0.93 && !_resettingPanel) {
+          _resettingPanel = true;
+          setState(() => _activeTab = null);
+          // 下一帧将面板动画回完全展开，阻断关闭
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _panelCtrl.open();
+              // open 动画结束后允许再次检测
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (mounted) _resettingPanel = false;
+              });
+            }
+          });
+          return;
+        }
+        // 安全网：面板完全折叠后清理 tab 状态
+        if (!_resettingPanel && pos <= 0.02 && _activeTab != null) {
+          setState(() => _activeTab = null);
+        }
       },
-      header: song == null
+      // ═══ collapsed：迷你播放器 ═══
+      collapsed: song == null
           ? const SizedBox.shrink()
-          : LayoutBuilder(
-              builder: (_, cts) {
-                final w = cts.maxWidth.isInfinite
-                    ? MediaQuery.of(context).size.width
-                    : cts.maxWidth;
-                return _buildHeader(song, isPlaying, colors, playerColors, w);
-              },
-            ),
-      panelBuilder: (_) => _buildPanelBody(
-        tab,
+          : _buildMiniPlayer(song, isPlaying, colors, playerColors, screenW),
+      // ═══ panelBuilder：完整内容 ═══
+      panelBuilder: (scrollCtrl) => _buildPanel(
+        _tab,
         panels,
-        isFm,
+        _tabs,
         colors,
         playerColors,
         song,
         isPlaying,
         coverUrl,
+        scrollCtrl,
+        screenH,
       ),
       body: widget.body,
     );
   }
 
-  // ═══ Header（折叠/展开共用，t=0 时顶部 60px 为迷你播放器）═══
-  //
-  // t=0: 封面在 top=8 left=10, 小圆 44px，右邻歌名/歌手 + 播放按钮
-  // t=1: 封面在 top=52 left=居中, 大方块 240px，显示关闭按钮 + 标题 + 分享
+  // ═══════════════════════════════════════════════════════════════
+  // 迷你播放器（collapsed — 面板折叠时显示）
+  // ═══════════════════════════════════════════════════════════════
 
-  Widget _buildHeader(
+  Widget _buildMiniPlayer(
     Song song,
     bool isPlaying,
     ThemeColors colors,
     PlayerThemeColors playerColors,
     double w,
   ) {
-    final t = _panelPos.clamp(0.0, 1.0);
-
-    // 封面：从左上小圆 → 居中大方块
-    final coverSz = _lerp(_miniCover, _bigCover, t);
-    final coverLeft = _lerp(10.0, (w - _bigCover) / 2, t);
-    final coverTop = _lerp(8.0, 52.0, t);
-    final coverRadius = _lerp(_miniCover / 2, 12.0, t);
-    // 折叠态元素：1 → 0
-    final miniOpacity = (1.0 - t * 2.5).clamp(0.0, 1.0);
-    // 展开态元素：0 → 1
-    final expandOpacity = ((t - 0.4) * 3).clamp(0.0, 1.0);
-
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (_panelCtrl.isPanelClosed) {
-          _panelCtrl.open();
-        } else {
-          _panelCtrl.close();
-        }
-      },
+      onTap: () => _panelCtrl.open(),
       child: Container(
         width: w,
-        height: 280,
-        decoration: BoxDecoration(
-          color: t < 0.3 ? playerColors.surface : Colors.transparent,
-          boxShadow: t < 0.1
-              ? [
-                  BoxShadow(
-                    color: playerColors.accent.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ]
-              : null,
-        ),
+        decoration: BoxDecoration(color: playerColors.surface),
         child: DefaultTextStyle(
-          style: TextStyle(decoration: TextDecoration.none),
-          child: Stack(
-            clipBehavior: Clip.none,
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: Column(
             children: [
-              // ── 迷你进度条 ──
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Opacity(opacity: miniOpacity, child: _MiniProgressBar()),
-              ),
-
-              // ── 封面（唯一，动画）──
-              Positioned(
-                left: coverLeft,
-                top: coverTop,
-                child: CoverImage(
-                  url: song.coverThumb(500),
-                  size: coverSz,
-                  radius: coverRadius,
-                ),
-              ),
-
-              // ── 歌名 + 歌手（封面右侧，折叠态）──
-              Positioned(
-                left: coverLeft + coverSz + 12,
-                top: coverTop,
-                right: 52,
-                child: Opacity(
-                  opacity: miniOpacity,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 2),
-                      Text(
-                        song.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        song.artist.isEmpty ? '未知歌手' : song.artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── 播放/暂停按钮（折叠态）──
-              Positioned(
-                right: 4,
-                top: coverTop + _miniCover / 2 - 18,
-                child: Opacity(
-                  opacity: miniOpacity,
-                  child: IconButton(
-                    icon: Icon(
-                      isPlaying ? Icons.pause_circle : Icons.play_circle,
-                      size: 36,
-                      color: colors.primary,
-                    ),
-                    onPressed: () => ref.read(playerProvider.notifier).toggle(),
-                  ),
-                ),
-              ),
-
-              // ── 展开态顶栏 ──
-              Opacity(
-                opacity: expandOpacity,
-                child: SizedBox(
-                  height: 48,
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          Icons.keyboard_arrow_down,
-                          color: colors.textPrimary,
-                        ),
-                        onPressed: () => _panelCtrl.close(),
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            'Now Playing',
+              // 迷你进度条（顶部）
+              const _MiniProgressBar(),
+              // 主内容：封面 + 歌名歌手 + 播放按钮（竖直居中）
+              Expanded(
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    CoverImage(url: song.coverThumb(500), size: 44, radius: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            song.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            song.artist.isEmpty ? '未知歌手' : song.artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
                               color: colors.textSecondary,
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.share,
-                          size: 20,
-                          color: colors.textPrimary,
-                        ),
-                        onPressed: () => SharePlus.instance.share(
-                          ShareParams(
-                            text:
-                                '我在听「${song.name}」- ${song.artist}\n'
-                                'https://music.163.com/song?id=${song.id}',
-                          ),
-                        ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        isPlaying ? Icons.pause : Icons.play_arrow,
+                        size: 36,
+                        color: colors.textPrimary,
                       ),
-                    ],
-                  ),
+                      onPressed: () =>
+                          ref.read(playerProvider.notifier).toggle(),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ),
               ),
             ],
@@ -313,95 +237,43 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
     );
   }
 
-  // ═══ 展开态 body ───
-
-  // ═══ 展开态 body（嵌套内层面板）═══
+  // ═══════════════════════════════════════════════════════════════
+  // 展开态完整内容 — 两种布局模式
   //
-  //   内层 SlidingUpPanel
-  //   body    = 播放器页面（歌名/歌手 + 进度条 + 控制按钮）
-  //   header  = TabBar（拖拽手柄，位于播放器页面下方）
-  //   panel   = Tab 内容（信息/列表/歌词/评论）
-  //
-  // 折叠时 TabBar 在底部，向上滑动展开 Tab 内容。
+  // 默认（_activeTab == null）：封面居中 → 歌名 → 进度 → 控制 → TabBar 底部
+  // 紧凑（_activeTab != null）：封面缩至右上角 → TabBar 上移 header → 内容区
+  // ═══════════════════════════════════════════════════════════════
 
-  Widget _buildPanelBody(
+  Widget _buildPanel(
     TabController tab,
     List<Widget> panels,
-    bool isFm,
+    List<Widget> tabs,
     ThemeColors colors,
     PlayerThemeColors playerColors,
     Song? song,
     bool isPlaying,
     String coverUrl,
+    ScrollController scrollCtrl,
+    double screenH,
   ) {
     if (song == null) return const SizedBox.shrink();
 
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    // 内层面板折叠高度：控制按钮行 + TabBar
-    final innerMinH = 90.0 + 40 + bottomPad;
+    final bgUrl = coverUrl.startsWith('http://')
+        ? coverUrl.replaceFirst('http://', 'https://')
+        : coverUrl;
 
-    return SlidingUpPanel(
-      controller: _innerCtrl,
-      minHeight: innerMinH,
-      maxHeight: MediaQuery.of(context).size.height * 0.7,
-      backdropEnabled: false,
-      borderRadius: BorderRadius.zero,
-      color: Colors.transparent,
-      panelBuilder: (_) => Material(
+    final selected = _activeTab != null;
+
+    final content = SizedBox(
+      height: screenH,
+      child: Material(
         color: playerColors.background,
         child: DefaultTextStyle(
-          style: TextStyle(decoration: TextDecoration.none),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              // 拖拽指示条
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colors.textSecondary.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: TabBarView(controller: tab, children: panels),
-              ),
-            ],
-          ),
-        ),
-      ),
-      header: Container(
-        color: playerColors.background,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TabBar(
-              controller: tab,
-              indicatorColor: colors.primary,
-              labelColor: colors.primary,
-              unselectedLabelColor: colors.textSecondary,
-              labelStyle: const TextStyle(fontSize: 12),
-              dividerColor: Colors.transparent,
-              indicatorSize: TabBarIndicatorSize.label,
-              tabs: isFm ? _fmTabs : _normalTabs,
-              onTap: (i) {
-                if (_innerCtrl.isPanelClosed && i != tab.index) {
-                  _innerCtrl.open();
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-      body: Material(
-        color: Colors.transparent,
-        child: Container(
-          color: playerColors.background,
+          style: const TextStyle(decoration: TextDecoration.none),
           child: Stack(
             children: [
-              // 背景：模糊 + 渐变 + 粒子
-              if (coverUrl.isNotEmpty)
+              // ── 第 1 层：模糊封面背景 ──
+              if (bgUrl.isNotEmpty)
                 Positioned.fill(
                   child: ClipRect(
                     child: BackdropFilter(
@@ -409,9 +281,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
                       child: Opacity(
                         opacity: 0.45,
                         child: CachedNetworkImage(
-                          imageUrl: coverUrl.startsWith('http://')
-                              ? coverUrl.replaceFirst('http://', 'https://')
-                              : coverUrl,
+                          imageUrl: bgUrl,
                           fit: BoxFit.cover,
                           httpHeaders: const {
                             'Referer': 'https://music.163.com',
@@ -424,6 +294,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
                   ),
                 ),
 
+              // ── 第 2 层：渐变叠加 ──
               Positioned.fill(
                 child: IgnorePointer(
                   child: Container(
@@ -444,6 +315,7 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
                 ),
               ),
 
+              // ── 第 3 层：粒子动画（仅播放时）──
               if (isPlaying)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -466,51 +338,271 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
                   ),
                 ),
 
-              // 播放器页面
-              SafeArea(
-                child: DefaultTextStyle(
-                  style: TextStyle(decoration: TextDecoration.none),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 16),
-                      Text(
-                        song.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        song.artist.isEmpty ? '未知歌手' : song.artist,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                      const Spacer(),
-                      const PlayerProgressBar(),
-                      const PlayerControlsRow(),
-                    ],
+              // ── 第 4 层：主内容 ──
+              Column(
+                children: [
+                  // ═══ Header：默认 / 紧凑 两态 ═══
+                  if (!selected)
+                    _buildDefaultHeader(colors, song, isPlaying)
+                  else
+                    _buildCompactHeader(
+                      tab,
+                      tabs,
+                      colors,
+                      playerColors,
+                      song,
+                      isPlaying,
+                    ),
+
+                  // ═══ 中间区域 ═══
+                  Expanded(
+                    child: !selected
+                        ? NotificationListener<OverscrollNotification>(
+                            onNotification: (notif) {
+                              if (notif.overscroll < -50) {
+                                setState(() => _activeTab = 0);
+                                tab.animateTo(0);
+                                return true;
+                              }
+                              return false;
+                            },
+                            child: SingleChildScrollView(
+                              controller: scrollCtrl,
+                              physics: const BouncingScrollPhysics(),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // 封面（大，居中）
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 24),
+                                    child: Center(
+                                      child: CoverImage(
+                                        url: song.coverThumb(500),
+                                        size: _coverSz,
+                                        radius: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  // 歌名 + 歌手
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 32,
+                                    ),
+                                    child: Text(
+                                      song.name,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    song.artist.isEmpty ? '未知歌手' : song.artist,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: colors.textSecondary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
+                            ),
+                          )
+                        : TabBarView(controller: tab, children: panels),
                   ),
-                ),
+
+                  // ═══ 进度条 + 控制按钮（仅默认模式）═══
+                  if (!selected) ...[
+                    const PlayerProgressBar(),
+                    const PlayerControlsRow(),
+                    const SizedBox(height: 4),
+                  ],
+
+                  // ═══ TabBar：默认模式在底部；紧凑模式已在 header 中 ═══
+                  if (!selected)
+                    TabBar(
+                      controller: tab,
+                      indicatorColor: Colors.transparent,
+                      labelColor: colors.textSecondary,
+                      unselectedLabelColor: colors.textSecondary,
+                      labelStyle: const TextStyle(fontSize: 12),
+                      dividerColor: Colors.transparent,
+                      indicatorSize: TabBarIndicatorSize.label,
+                      tabs: tabs,
+                      onTap: (i) {
+                        setState(() => _activeTab = i);
+                        tab.animateTo(i);
+                      },
+                    ),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+    return content;
+  }
+
+  // ── Default header ──
+
+  Widget _buildDefaultHeader(ThemeColors colors, Song song, bool isPlaying) {
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.keyboard_arrow_down, color: colors.textPrimary),
+            onPressed: () {
+              _panelCtrl.close();
+              setState(() => _activeTab = null);
+            },
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                'Now Playing',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.share, size: 20, color: colors.textPrimary),
+            onPressed: () => SharePlus.instance.share(
+              ShareParams(
+                text:
+                    '我在听「${song.name}」- ${song.artist}\n'
+                    'https://music.163.com/song?id=${song.id}',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 紧凑顶栏 ──
+  //
+  //  Row 1：[▼] [歌名 / 歌手（左对齐）]  [📷 封面盖住按钮]
+  //  Row 2：[  TabBar  .........................]
+  //
+  //  封面在右上角盖住播放按钮的位置，点击封面退出紧凑模式。
+  //  进度条和控制按钮在紧凑模式下隐藏。
+
+  Widget _buildCompactHeader(
+    TabController tab,
+    List<Widget> tabs,
+    ThemeColors colors,
+    PlayerThemeColors playerColors,
+    Song song,
+    bool isPlaying,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Row 1：封面（左侧盖住返回按钮）+ 歌曲信息 + 播放暂停 ──
+        SizedBox(
+          height: 48,
+          child: Row(
+            children: [
+              // 封面（左侧，盖住 ▼ 位置，点击退出紧凑模式）
+              GestureDetector(
+                onTap: () => setState(() => _activeTab = null),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: CoverImage(
+                      url: song.coverThumb(200),
+                      size: 32,
+                      radius: 0,
+                    ),
+                  ),
+                ),
+              ),
+              // 歌名 + 歌手（左对齐，垂直居中）
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      song.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      song.artist.isEmpty ? '未知歌手' : song.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 播放/暂停
+              IconButton(
+                icon: Icon(
+                  isPlaying ? Icons.pause_circle : Icons.play_circle,
+                  size: 26,
+                  color: playerColors.accent,
+                ),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: () => ref.read(playerProvider.notifier).toggle(),
+              ),
+            ],
+          ),
+        ),
+        // ── Row 2：TabBar（app bar 下方，透明背景）──
+        TabBar(
+          controller: tab,
+          indicatorColor: playerColors.accent,
+          labelColor: playerColors.accent,
+          unselectedLabelColor: colors.textSecondary,
+          labelStyle: const TextStyle(fontSize: 12),
+          dividerColor: Colors.transparent,
+          indicatorSize: TabBarIndicatorSize.label,
+          tabs: tabs,
+          onTap: (i) {
+            if (_activeTab == i) {
+              setState(() => _activeTab = null);
+            } else {
+              setState(() => _activeTab = i);
+              tab.animateTo(i);
+            }
+          },
+        ),
+      ],
+    );
   }
 }
 
-// ═══ 迷你进度条 ═══
+// ═══════════════════════════════════════════════════════════════
+// Mini progress bar
+// ═══════════════════════════════════════════════════════════════
 
 class _MiniProgressBar extends ConsumerWidget {
   const _MiniProgressBar();
@@ -519,6 +611,7 @@ class _MiniProgressBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = ref.watch(playerProvider.select((s) => s.progress));
     final colors = ref.watch(currentColorsProvider);
+    final playerColors = ref.watch(playerThemeProvider);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -535,7 +628,7 @@ class _MiniProgressBar extends ConsumerWidget {
                 top: 0,
                 bottom: 0,
                 width: fillW,
-                child: Container(color: colors.primary),
+                child: Container(color: playerColors.accent),
               ),
             ],
           ),

@@ -6,7 +6,7 @@ import 'package:yuugao/pages/cloud_page.dart';
 import 'package:yuugao/pages/podcast_search_page.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
-import 'package:yuugao/widgets/full_player.dart';
+import 'package:yuugao/widgets/player_panel.dart';
 
 /// 首页四个功能入口：每日 / FM / 播客 / 云盘。
 class HomeActionButtons extends ConsumerWidget {
@@ -26,22 +26,22 @@ class HomeActionButtons extends ConsumerWidget {
       ),
       (
         _Action(Icons.radio, 'FM', Colors.grey),
-        () => _startFmAndShowPlayer(context, ref),
+        () => _startFmAndShowPlayer(ref),
       ),
       (
         _Action(Icons.sensors, '播客', Colors.grey),
         () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const PodcastSearchPage()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const PodcastSearchPage()));
         },
       ),
       (
         _Action(Icons.cloud_queue, '云盘', Colors.grey),
         () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CloudPage()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const CloudPage()));
         },
       ),
     ];
@@ -59,21 +59,15 @@ class HomeActionButtons extends ConsumerWidget {
     );
   }
 
-  Future<void> _startFmAndShowPlayer(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
+  /// 启动 FM 并打开已有的播放面板
+  Future<void> _startFmAndShowPlayer(WidgetRef ref) async {
     final ok = await ref.read(playerProvider.notifier).startFm();
-    if (!context.mounted) return;
     if (ok) {
-      showFullPlayer(context);
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('FM 启动失败，请稍后重试')));
+      // 通过全局 PanelController 打开已有面板，不 push 新页面
+      final ctrl = ref.read(panelControllerProvider);
+      ctrl?.open();
     }
   }
-
 }
 
 class _Action {

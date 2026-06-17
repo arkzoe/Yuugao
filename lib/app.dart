@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:yuugao/pages/main_shell.dart';
 import 'package:yuugao/providers/player_provider.dart';
 import 'package:yuugao/providers/playlist_provider.dart';
 import 'package:yuugao/providers/settings_provider.dart';
 import 'package:yuugao/providers/user_provider.dart';
-import 'package:yuugao/pages/home_page.dart';
 import 'package:yuugao/pages/login_page.dart';
 import 'package:yuugao/services/audio_handler.dart';
 import 'package:yuugao/theme.dart';
@@ -26,7 +26,7 @@ class YuugaoApp extends ConsumerWidget {
       home: const _AuthGate(),
       routes: {
         '/login': (_) => const LoginPage(),
-        '/home': (_) => const HomePage(),
+        '/main': (_) => const MainShell(),
       },
     );
   }
@@ -78,7 +78,7 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
       case AuthStatus.unknown:
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case AuthStatus.authenticated:
-        return const HomePage();
+        return const MainShell();
       case AuthStatus.unauthenticated:
         return const LoginPage();
     }
