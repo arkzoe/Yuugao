@@ -25,6 +25,7 @@ class PlayerState {
   final Duration duration;
   final bool buffering;
   final bool isFmMode;
+  final String? modeMessage;
 
   /// 当前队列源自的歌单 ID（用于心动模式）。
   final int? playlistId;
@@ -44,6 +45,7 @@ class PlayerState {
     this.duration = Duration.zero,
     this.buffering = false,
     this.isFmMode = false,
+    this.modeMessage,
     this.playlistId,
     this.podcastMeta,
   });
@@ -69,6 +71,7 @@ class PlayerState {
     Duration? duration,
     bool? buffering,
     bool? isFmMode,
+    Object? modeMessage = _keepModeMessage,
     int? playlistId,
     Map<int, Map<String, String>>? podcastMeta,
   }) {
@@ -81,11 +84,16 @@ class PlayerState {
       duration: duration ?? this.duration,
       buffering: buffering ?? this.buffering,
       isFmMode: isFmMode ?? this.isFmMode,
+      modeMessage: modeMessage == _keepModeMessage
+          ? this.modeMessage
+          : modeMessage as String?,
       playlistId: playlistId ?? this.playlistId,
       podcastMeta: podcastMeta ?? this.podcastMeta,
     );
   }
 }
+
+const _keepModeMessage = Object();
 
 class PlayerNotifier extends Notifier<PlayerState> {
   @override
@@ -143,8 +151,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       prefs.setBool(_kFmMode, s.isFmMode);
       final meta = s.podcastMeta;
       if (meta != null && meta.isNotEmpty) {
-        final json = jsonEncode(
-            meta.map((k, v) => MapEntry(k.toString(), v)));
+        final json = jsonEncode(meta.map((k, v) => MapEntry(k.toString(), v)));
         if (kDebugMode) debugPrint('[podcast] persist SAVE: $json');
         prefs.setString(_kPodcastMeta, json);
       }
@@ -195,19 +202,24 @@ class PlayerNotifier extends Notifier<PlayerState> {
           final raw = decoded as Map<String, dynamic>;
           if (raw.isNotEmpty) {
             podcastMeta = raw.map(
-              (k, v) =>
-                  MapEntry(int.parse(k), Map<String, String>.from(v)),
+              (k, v) => MapEntry(int.parse(k), Map<String, String>.from(v)),
             );
           }
         }
       }
       if (podcastMeta != null && podcastMeta.isNotEmpty) {
-        if (kDebugMode) debugPrint('[podcast] restore APPLY: ${podcastMeta.length} entries');
+        if (kDebugMode) {
+          debugPrint('[podcast] restore APPLY: ${podcastMeta.length} entries');
+        }
         for (final e in podcastMeta.entries) {
           final song = idToSong[e.key];
           if (song != null) {
             final m = e.value;
-            if (kDebugMode) debugPrint('[podcast] restore OVERRIDE songId=${e.key} name=${m['name']} artist=${m['artist']}');
+            if (kDebugMode) {
+              debugPrint(
+                '[podcast] restore OVERRIDE songId=${e.key} name=${m['name']} artist=${m['artist']}',
+              );
+            }
             idToSong[e.key] = Song(
               id: song.id,
               name: m['name'] ?? song.name,
@@ -297,7 +309,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     int? playlistId,
     Map<int, Map<String, String>>? podcastMeta,
   }) async {
-    if (kDebugMode) debugPrint('[podcast] play() received podcastMeta=$podcastMeta');
+    if (kDebugMode) {
+      debugPrint('[podcast] play() received podcastMeta=$podcastMeta');
+    }
     final list = queue ?? [song];
     var index = list.indexWhere((s) => s.id == song.id);
     if (index < 0) index = 0;
@@ -388,21 +402,29 @@ class PlayerNotifier extends Notifier<PlayerState> {
     state = state.copyWith(queue: _audio.songQueue);
   }
 
+  void clearModeMessage() {
+    if (state.modeMessage == null) return;
+    state = state.copyWith(modeMessage: null);
+  }
+
   Future<void> setMode(PlayMode mode) async {
     // 心动模式：仅在「我喜欢的音乐」歌单可用
     if (mode == PlayMode.heartbeat) {
       final pid = state.playlistId;
       if (pid == null || pid != _likedPlaylistId) {
         // 不是喜欢的音乐歌单，跳过心动模式
-        state = state.copyWith(mode: PlayMode.sequential);
-    await _audio.setShuffle(false);
+        state = state.copyWith(
+          mode: PlayMode.sequential,
+          modeMessage: '仅我喜欢的音乐支持心动模式',
+        );
+        await _audio.setShuffle(false);
         await _audio.setLoopMode(LoopMode.all);
         _persistState(immediate: true);
         return;
       }
       // 立即显示心形图标 + 设置播放参数
       state = state.copyWith(mode: PlayMode.heartbeat);
-await _audio.setShuffle(false);
+      await _audio.setShuffle(false);
       await _audio.setLoopMode(LoopMode.all);
       _persistState(immediate: true);
       // 后台异步加载智能列表
@@ -473,8 +495,7 @@ await _audio.setShuffle(false);
   // ═══ 心动模式 ═══
 
   /// 「我喜欢的音乐」歌单 ID，心动模式仅对此歌单开放。
-  int? get _likedPlaylistId =>
-      ref.read(playlistProvider).likedPlaylist?.id;
+  int? get _likedPlaylistId => ref.read(playlistProvider).likedPlaylist?.id;
 
   /// 后台加载智能播放列表并替换队列。
   ///
@@ -491,7 +512,9 @@ await _audio.setShuffle(false);
 
     try {
       // ── 第一步：获取智能列表 ID ──
-      if (kDebugMode) debugPrint('[heartbeat] loading… songId=${seed.id} playlistId=$pid');
+      if (kDebugMode) {
+        debugPrint('[heartbeat] loading… songId=${seed.id} playlistId=$pid');
+      }
       final res = await MusicManager().playmodeIntelligenceList(
         songId: seed.id,
         playlistId: pid,
@@ -533,7 +556,9 @@ await _audio.setShuffle(false);
         _revertHeartbeat();
         return;
       }
-      if (kDebugMode) debugPrint('[heartbeat] songDetail returned ${newSongs.length} songs');
+      if (kDebugMode) {
+        debugPrint('[heartbeat] songDetail returned ${newSongs.length} songs');
+      }
 
       if (state.mode != PlayMode.heartbeat) return;
 
@@ -546,7 +571,9 @@ await _audio.setShuffle(false);
         currentIndex: _audio.player.currentIndex ?? 0,
         position: _audio.player.position,
       );
-      if (kDebugMode) debugPrint('[heartbeat] SUCCESS queue=${_audio.songQueue.length}');
+      if (kDebugMode) {
+        debugPrint('[heartbeat] SUCCESS queue=${_audio.songQueue.length}');
+      }
     } catch (e, st) {
       if (kDebugMode) debugPrint('[heartbeat] EXCEPTION: $e\n$st');
       _revertHeartbeat();
@@ -554,9 +581,9 @@ await _audio.setShuffle(false);
   }
 
   /// 心动模式加载失败时回退到顺序播放。
-  void _revertHeartbeat() {
+  void _revertHeartbeat([String message = '心动模式暂不可用，已切回顺序播放']) {
     if (state.mode != PlayMode.heartbeat) return;
-    state = state.copyWith(mode: PlayMode.sequential);
+    state = state.copyWith(mode: PlayMode.sequential, modeMessage: message);
     // fire-and-forget，不阻塞
     _audio.setShuffle(false);
     _audio.setLoopMode(LoopMode.all);

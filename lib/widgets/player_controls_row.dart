@@ -31,6 +31,14 @@ class PlayerControlsRow extends ConsumerWidget {
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
     final buffering = ref.watch(playerProvider.select((s) => s.buffering));
     final mode = ref.watch(playerProvider.select((s) => s.mode));
+    ref.listen<String?>(playerProvider.select((s) => s.modeMessage), (
+      previous,
+      next,
+    ) {
+      if (next == null || next == previous) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next)));
+      ref.read(playerProvider.notifier).clearModeMessage();
+    });
     final songId = ref.watch(playerProvider.select((s) => s.current?.id));
     final liked =
         songId != null &&
