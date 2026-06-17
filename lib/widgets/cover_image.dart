@@ -23,9 +23,11 @@ class CoverImage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(currentColorsProvider);
 
-    final safeUrl = url.startsWith('http://')
-        ? url.replaceFirst('http://', 'https://')
-        : url;
+    final safeUrl = url.startsWith('//')
+        ? 'https:$url'
+        : url.startsWith('http://')
+            ? url.replaceFirst('http://', 'https://')
+            : url;
 
     final effectiveFit = fit ?? BoxFit.cover;
 

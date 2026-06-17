@@ -5,9 +5,12 @@ import 'package:yuugao/CloudMusic/api/recommend/entity/recommend_song_entity.dar
 import 'package:yuugao/CloudMusic/api/search/entity/search_entity.dart';
 import 'package:yuugao/CloudMusic/api/song/entity/song_detail_entity.dart';
 
-/// 将 http:// 强制转为 https://，网易云 CDN 对明文请求返回 403。
-String _safeUrl(String url) =>
-    url.startsWith('http://') ? url.replaceFirst('http://', 'https://') : url;
+/// 规范化封面 URL：协议相对 → https，明文 HTTP → HTTPS，其余不变。
+String _safeUrl(String url) {
+  if (url.startsWith('//')) return 'https:$url';
+  if (url.startsWith('http://')) return url.replaceFirst('http://', 'https://');
+  return url;
+}
 
 /// 统一的 UI 歌曲模型。
 ///
@@ -129,8 +132,9 @@ class Song {
   }
 
   @override
-  bool operator ==(Object other) => other is Song && other.id == id;
+  bool operator ==(Object other) =>
+      other is Song && other.id == id && other.coverUrl == coverUrl;
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => Object.hash(id, coverUrl);
 }

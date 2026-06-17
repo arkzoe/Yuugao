@@ -258,9 +258,12 @@ class _PlayerPanelState extends ConsumerState<PlayerPanel>
   ) {
     if (song == null) return const SizedBox.shrink();
 
-    final bgUrl = coverUrl.startsWith('http://')
-        ? coverUrl.replaceFirst('http://', 'https://')
-        : coverUrl;
+    final rawUrl = coverUrl;
+    final bgUrl = rawUrl.startsWith('//')
+        ? 'https:$rawUrl'
+        : rawUrl.startsWith('http://')
+            ? rawUrl.replaceFirst('http://', 'https://')
+            : rawUrl;
 
     final selected = _activeTab != null;
 
