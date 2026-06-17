@@ -32,7 +32,8 @@ class SongTile extends ConsumerWidget {
   });
 
   void _showMenu(BuildContext context, WidgetRef ref) {
-    final colors = ref.watch(currentColorsProvider);
+    final colors = ref.read(currentColorsProvider);
+    final liked = ref.read(playlistProvider).likedSongIds.contains(song.id);
     showModalBottomSheet(
       context: context,
       backgroundColor: colors.card,
@@ -47,26 +48,30 @@ class SongTile extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 歌曲信息
-                Text(song.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary)),
+                Text(
+                  song.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
-                    song.artist.isEmpty ? '未知歌手' : song.artist,
-                    style: TextStyle(
-                        fontSize: 13, color: colors.textSecondary)),
+                  song.artist.isEmpty ? '未知歌手' : song.artist,
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                ),
                 const SizedBox(height: 12),
                 Divider(color: colors.divider),
                 // 下一首播放
                 ListTile(
-                  leading:
-                      Icon(Icons.skip_next, color: colors.textPrimary),
-                  title: Text('下一首播放',
-                      style: TextStyle(color: colors.textPrimary)),
+                  leading: Icon(Icons.skip_next, color: colors.textPrimary),
+                  title: Text(
+                    '下一首播放',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
                   onTap: () {
                     ref.read(playerProvider.notifier).insertNext(song);
                     Navigator.of(ctx).pop();
@@ -80,33 +85,54 @@ class SongTile extends ConsumerWidget {
                 ),
                 // 收藏 / 取消收藏
                 ListTile(
-                  leading:
-                      Icon(Icons.favorite_border, color: colors.textPrimary),
-                  title: Text('收藏',
-                      style: TextStyle(color: colors.textPrimary)),
-                  onTap: () {
-                    ref.read(playlistProvider.notifier).toggleLike(song.id);
+                  leading: Icon(
+                    liked ? Icons.favorite : Icons.favorite_border,
+                    color: colors.textPrimary,
+                  ),
+                  title: Text(
+                    liked ? '取消收藏' : '收藏',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                  onTap: () async {
+                    final ok = await ref
+                        .read(playlistProvider.notifier)
+                        .toggleLike(song.id);
+                    if (!ctx.mounted) return;
                     Navigator.of(ctx).pop();
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('操作失败，请重试'),
+                          backgroundColor: colors.card,
+                        ),
+                      );
+                    }
                   },
                 ),
                 // 分享
                 ListTile(
-                  leading:
-                      Icon(Icons.share, color: colors.textPrimary),
-                  title: Text('分享',
-                      style: TextStyle(color: colors.textPrimary)),
+                  leading: Icon(Icons.share, color: colors.textPrimary),
+                  title: Text(
+                    '分享',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
                   onTap: () {
                     Navigator.of(ctx).pop();
-                    SharePlus.instance.share(ShareParams(
-                        text: '我在听「${song.name}」- ${song.artist}'));
+                    SharePlus.instance.share(
+                      ShareParams(text: '我在听「${song.name}」- ${song.artist}'),
+                    );
                   },
                 ),
                 // 查看评论
                 ListTile(
-                  leading: Icon(Icons.comment_outlined,
-                      color: colors.textPrimary),
-                  title: Text('查看评论',
-                      style: TextStyle(color: colors.textPrimary)),
+                  leading: Icon(
+                    Icons.comment_outlined,
+                    color: colors.textPrimary,
+                  ),
+                  title: Text(
+                    '查看评论',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
                   onTap: () {
                     Navigator.of(ctx).pop();
                     Navigator.of(context).push(
@@ -132,11 +158,9 @@ class SongTile extends ConsumerWidget {
     );
 
     return InkWell(
-      onTap: () => ref.read(playerProvider.notifier).play(
-        song,
-        queue: queue,
-        playlistId: playlistId,
-      ),
+      onTap: () => ref
+          .read(playerProvider.notifier)
+          .play(song, queue: queue, playlistId: playlistId),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
@@ -147,8 +171,7 @@ class SongTile extends ConsumerWidget {
                 child: Text(
                   '$label',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 12, color: colors.textSecondary),
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
                 ),
               ),
               const SizedBox(width: 4),
@@ -181,10 +204,14 @@ class SongTile extends ConsumerWidget {
                         const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 3, vertical: 1),
+                            horizontal: 3,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             border: Border.all(
-                                color: colors.primary, width: 0.7),
+                              color: colors.primary,
+                              width: 0.7,
+                            ),
                             borderRadius: BorderRadius.circular(3),
                           ),
                           child: Text(
@@ -204,15 +231,17 @@ class SongTile extends ConsumerWidget {
                     song.artist.isEmpty ? '未知歌手' : song.artist,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12, color: colors.textSecondary),
+                    style: TextStyle(fontSize: 12, color: colors.textSecondary),
                   ),
                 ],
               ),
             ),
             IconButton(
-              icon: Icon(Icons.more_vert,
-                  color: colors.textSecondary, size: 20),
+              icon: Icon(
+                Icons.more_vert,
+                color: colors.textSecondary,
+                size: 20,
+              ),
               onPressed: () => _showMenu(context, ref),
             ),
           ],
