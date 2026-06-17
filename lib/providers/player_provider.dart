@@ -265,7 +265,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
       _persistState();
     });
     _audio.durationStream.listen((dur) {
-      state = state.copyWith(duration: dur ?? Duration.zero);
+      final audioDur = dur ?? Duration.zero;
+      // 优先使用歌曲元数据的时长（VIP 试听歌曲的音频源可能只有 30 秒，
+      // 但元数据包含真实总时长）
+      final metaDurMs = state.current?.durationMs ?? 0;
+      final effectiveDur = metaDurMs > audioDur.inMilliseconds
+          ? Duration(milliseconds: metaDurMs)
+          : audioDur;
+      state = state.copyWith(duration: effectiveDur);
     });
     _audio.currentIndexStream.listen((idx) {
       if (idx == null) return;
