@@ -202,25 +202,12 @@ class SongTile extends ConsumerWidget {
                       // fee==1 才是 VIP 专享；fee==4/8 是数字专辑/付费单曲，不是 VIP
                       if (song.fee == 1) ...[
                         const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 3,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: colors.primary,
-                              width: 0.7,
-                            ),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            'VIP',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: colors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        Text(
+                          'VIP',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: colors.primary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
