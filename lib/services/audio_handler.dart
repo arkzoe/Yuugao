@@ -475,21 +475,53 @@ class YuugaoAudioHandler extends BaseAudioHandler
   // 私人 FM（简化版：移除双缓冲预取，批量拉取后队列播放）
   // ═════════════════════════════════════════════════════════════
 
-  /// 启动 FM：拉取一批歌曲，批量解析 URL，构建队列并播放。
+  /// 启动 FM：拉取推荐 → 不等 songDetail 直接播放 → 元数据到后静默更新。
+  ///
+  /// 关键路径只等待 personalFm + songUrl 两个网络调用。songDetail 在后台并行
+  /// 完成，拿到完整元数据后更新队列和通知栏，不阻塞出声。
   ///
   /// 关键顺序：先推送队列到 UI 层 + mediaSession，再调用 setAudioSources。
-  /// 若顺序相反，setAudioSources 触发 currentIndexStream → Provider 在
-  /// songQueueStream 还未更新时就把 currentIndex 设为 0，导致 UI 短暂显示
-  /// 旧歌单的第一首歌（而非 FM 歌曲）。
   Future<bool> startFm() async {
     if (_fmLoading) return false;
     _fmLoading = true;
 
     try {
-      final songs = await _fetchFmSongs();
+      // 1. 拉取 FM 推荐
+      final fmRes = await MusicManager().personalFm();
+      final data = fmRes?.data;
+      if (data == null || data.isEmpty) return false;
+      final ids = data.map((d) => d.id ?? 0).where((id) => id > 0).toList();
+      if (ids.isEmpty) return false;
+
+      _resolvedUrls.clear();
+      _resolvedExt.clear();
+
+      // 2. 并行启动 songDetail 和 songUrl（future 创建即开始执行）
+      final strIds = ids.map((id) => id.toString()).toList();
+      final detailFuture = MusicManager().songDetail(ids: ids);
+      final urlFuture = MusicManager().songUrl(ids: strIds, level: level);
+
+      // 3. 先用 FM 原始数据构建 Song（ID 正确即可，用于建 AudioSource）
+      List<Song> songs = data
+          .map((d) => _songFromFmData(d))
+          .where((s) => s.id > 0)
+          .toList();
       if (songs.isEmpty) return false;
 
-      await _batchResolve(songs);
+      // 4. 只等 songUrl —— 流媒体 URL 一到就可以建 AudioSource 出声
+      final urlRes = await urlFuture;
+      if (urlRes != null) {
+        final urlData = urlRes.data ?? [];
+        for (final d in urlData) {
+          if (d.id != null && d.url != null && d.url!.isNotEmpty) {
+            final type = (d.type ?? 'mp3').toLowerCase();
+            _resolvedUrls[d.id!] = d.url!;
+            _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
+          }
+        }
+      }
+
+      // 5. 构建 AudioSource + 播放（不等 songDetail）
       final sources = <AudioSource>[];
       for (final s in songs) {
         final src = _buildSource(s);
@@ -499,19 +531,11 @@ class YuugaoAudioHandler extends BaseAudioHandler
 
       _isFmMode = true;
       _fmCurrentTrack = songs.first;
-
-      _resolvedUrls.clear();
-      _resolvedExt.clear();
+      _player.setLoopMode(LoopMode.off);
 
       _songQueue = songs;
-
-      // ★ 先推送队列到 UI 层和 mediaSession，再切换音频源。
-      // 这样当 setAudioSources 触发 currentIndexStream 时，
-      // Provider 的 songQueueStream 已经收到 FM 队列，
-      // currentIndex=0 会指向正确的 FM 歌曲而非旧歌单第一首。
       _songQueueController.add(List.unmodifiable(_songQueue));
       _pushQueueToMediaSession();
-      // 同时立即设置 mediaItem，让通知栏/锁屏显示 FM 歌曲信息。
       mediaItem.add(_songToMediaItem(songs.first));
 
       await _player.setAudioSources(
@@ -521,6 +545,10 @@ class YuugaoAudioHandler extends BaseAudioHandler
       );
       _player.play();
       _cacheSong(songs.first);
+
+      // 6. 后台等 songDetail 完成，用完整元数据静默更新队列（不阻塞播放）
+      _updateFmMetadata(detailFuture, songs.first.id);
+
       return true;
     } catch (_) {
       _isFmMode = false;
@@ -528,6 +556,37 @@ class YuugaoAudioHandler extends BaseAudioHandler
     } finally {
       _fmLoading = false;
     }
+  }
+
+  /// 后台等待 [detailFuture] 完成，用 songDetail 的完整元数据替换队列中
+  /// 由 FM 原始数据构建的 Song，并同步通知栏 + UI。
+  ///
+  /// 通过 songQueueStream 触发 Provider 更新；Provider 侧已改为引用比较
+  /// 而非长度比较，所以相同长度 / 相同 ID 的元数据替换也会被 UI 消费。
+  void _updateFmMetadata(Future<SongDetailEntity?> detailFuture, int currentId) {
+    detailFuture.then((detailRes) {
+      if (detailRes == null ||
+          detailRes.songs == null ||
+          detailRes.songs!.isEmpty) {
+        return;
+      }
+      final complete = detailRes.songs!
+          .map((s) => Song.fromSongDetail(s))
+          .where((s) => s.id > 0)
+          .toList();
+      if (complete.isEmpty) return;
+
+      _songQueue = complete;
+      _fmCurrentTrack = complete.firstWhere(
+        (s) => s.id == currentId,
+        orElse: () => complete.first,
+      );
+      _songQueueController.add(List.unmodifiable(_songQueue));
+      _pushQueueToMediaSession();
+      mediaItem.add(_songToMediaItem(_fmCurrentTrack!));
+    }).catchError((_) {
+      // songDetail 失败不影响播放，保留 FM 原始数据
+    });
   }
 
   /// FM 下一首：队列内还有歌就切过去，否则拉取新一批。
@@ -548,12 +607,50 @@ class YuugaoAudioHandler extends BaseAudioHandler
     // 队列耗尽 — 增量扩展，不重建播放器
     _fmLoading = true;
     try {
-      final songs = await _fetchFmSongs();
+      // 1. FM 推荐
+      final fmRes = await MusicManager().personalFm();
+      final data = fmRes?.data;
+      if (data == null || data.isEmpty) return false;
+      final ids = data.map((d) => d.id ?? 0).where((id) => id > 0).toList();
+      if (ids.isEmpty) return false;
+
+      // 2. 并行获取元数据 + URL
+      final strIds = ids.map((id) => id.toString()).toList();
+      final detailFuture = MusicManager().songDetail(ids: ids);
+      final urlFuture = MusicManager().songUrl(ids: strIds, level: level);
+      final detailRes = await detailFuture;
+      final urlRes = await urlFuture;
+
+      // 3. 构建 Song 列表
+      List<Song> songs;
+      if (detailRes != null &&
+          detailRes.songs != null &&
+          detailRes.songs!.isNotEmpty) {
+        songs = detailRes.songs!
+            .map((s) => Song.fromSongDetail(s))
+            .where((s) => s.id > 0)
+            .toList();
+      } else {
+        songs = data
+            .map((d) => _songFromFmData(d))
+            .where((s) => s.id > 0)
+            .toList();
+      }
       if (songs.isEmpty) return false;
 
-      await _batchResolve(songs);
+      // 4. 缓存 URL
+      if (urlRes != null) {
+        final urlData = (urlRes).data ?? [];
+        for (final d in urlData) {
+          if (d.id != null && d.url != null && (d.url!).isNotEmpty) {
+            final type = (d.type ?? 'mp3').toLowerCase();
+            _resolvedUrls[d.id!] = d.url!;
+            _resolvedExt[d.id!] = type.isEmpty ? 'mp3' : type;
+          }
+        }
+      }
 
-      // 逐个追加到现有队列末尾（避免 setAudioSources 造成的间隙）
+      // 5. 逐个追加到现有队列末尾（避免 setAudioSources 造成的间隙）
       int added = 0;
       for (final s in songs) {
         final src = _buildSource(s);
@@ -604,46 +701,25 @@ class YuugaoAudioHandler extends BaseAudioHandler
     _fmCurrentTrack = null;
   }
 
-  /// 拉取一批 FM 歌曲并转为 [Song] 列表。
-  Future<List<Song>> _fetchFmSongs() async {
-    final res = await MusicManager().personalFm();
-    final data = res?.data;
-    if (data == null || data.isEmpty) return [];
-    return _fmIdsToSongs(data);
-  }
-
-  Future<List<Song>> _fmIdsToSongs(List<PersonalFmData> data) async {
-    if (data.isEmpty) return [];
-    final ids = data.map((d) => d.id ?? 0).where((id) => id > 0).toList();
-    if (ids.isNotEmpty) {
-      try {
-        final detail = await MusicManager().songDetail(ids: ids);
-        if (detail != null &&
-            detail.songs != null &&
-            detail.songs!.isNotEmpty) {
-          return detail.songs!
-              .map((s) => Song.fromSongDetail(s))
-              .where((s) => s.id > 0)
-              .toList();
-        }
-      } catch (_) {}
-    }
-    return data.map((d) => _songFromFmData(d)).where((s) => s.id > 0).toList();
-  }
-
+  /// 从 [PersonalFmData] 构建 [Song]（兜底路径）。
   Song _songFromFmData(PersonalFmData d) {
     final ar = d.ar ?? [];
     final artists = ar
         .map((a) => a.name ?? '')
         .where((n) => n.isNotEmpty)
         .join(' / ');
+    final rawUrl = d.al?.picUrl ?? '';
+    // http:// 强制转 https://，避免网易云 CDN 返回 403
+    final coverUrl = rawUrl.startsWith('http://')
+        ? rawUrl.replaceFirst('http://', 'https://')
+        : rawUrl;
     return Song(
       id: d.id ?? 0,
       name: d.name ?? '',
       artist: artists,
       artistIds: ar.map((a) => a.id ?? 0).where((id) => id > 0).toList(),
       album: d.al?.name ?? '',
-      coverUrl: d.al?.picUrl ?? '',
+      coverUrl: coverUrl,
       durationMs: d.dt ?? 0,
       fee: d.fee ?? 0,
     );
